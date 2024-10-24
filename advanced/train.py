@@ -94,7 +94,19 @@ trainer = SFTTrainer(
 
 # 학습 시작
 print("SFT Trainer 설정 성공. 학습을 시작합니다.")
-trainer.train()
+train_result = trainer.train()
+
+# 학습 및 평가 결과 로깅
+metrics = train_result.metrics
+trainer.log_metrics("train", metrics)
+trainer.save_metrics("train", metrics)
+
+# 평가 데이터셋으로 평가 실행
+eval_metrics = trainer.evaluate()
+trainer.log_metrics("eval", eval_metrics)
+trainer.save_metrics("eval", eval_metrics)
+
+trainer.save_state()
 
 # 모델 저장
 trainer.save_model("./trained_model")
@@ -106,8 +118,14 @@ torch.cuda.empty_cache()
 def generate_answer(instruction):
     inputs = tokenizer(f"### Question: {instruction}\n ### Answer:", return_tensors="pt", padding=True, truncation=True)
     inputs = {key: value.to('cuda') for key, value in inputs.items()}  # 모든 입력을 GPU로 전송
-    outputs = model.generate(inputs['input_ids'], attention_mask=inputs['attention_mask'], max_length=100, pad_token_id=tokenizer.pad_token_id)
-    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+    outputs = model.generate(
+        inputs['input_ids'],
+        attention_mask=inputs['attention_mask'],
+        max_length=150,  # 생성 길이를 늘림
+        pad_token_id=tokenizer.pad_token_id
+    )
+    # '### Question:' 제거하고 답변만 반환
+    return tokenizer.decode(outputs[0], skip_special_tokens=True).split("### Answer:")[-1].strip()
 
 # 예시 질문
 sample_question = "요즘 아무 이유 없이 눈물이 나요. 이런 기분을 어떻게 해결할 수 있을까요?"
