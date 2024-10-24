@@ -5,8 +5,8 @@ from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
 from transformers import AdamW, get_scheduler
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 import torch
+from tqdm import tqdm
 import wandb
 
 # WandB 초기화
@@ -18,8 +18,8 @@ with open('corpus.json', 'r', encoding='utf-8') as f:
 
 # 입력-출력 쌍 준비
 data_pairs = []
-for i in range(0, len(corpus) - 1, 2):  # user와 therapist 쌍으로 진행
-    if corpus[i]['role'] == 'user' and corpus[i + 1]['role'] == 'therapist':
+for i in range(0, len(corpus)-1, 2):  # user와 therapist 쌍으로 진행
+    if corpus[i]['role'] == 'user' and corpus[i+1]['role'] == 'therapist':
         input_text = corpus[i]['content']  # 사용자 입력
         output_text = corpus[i + 1]['content']  # 치료사 응답
         data_pairs.append({"input": input_text, "output": output_text})
@@ -37,13 +37,11 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
 
 # 전처리 함수 정의
 def preprocess_function(examples):
-    # input과 output 모두 tokenizer로 인코딩하고, padding=True 및 truncation=True를 설정하여 텐서 형식으로 변환
-    inputs = tokenizer(examples['input'], max_length=256, truncation=True, padding="max_length", return_tensors="pt")
-    labels = tokenizer(examples['output'], max_length=256, truncation=True, padding="max_length", return_tensors="pt").input_ids
+    inputs = tokenizer(examples['input'], max_length=256, truncation=True, padding="max_length")
+    labels = tokenizer(text_target=examples['output'], max_length=256, truncation=True, padding="max_length").input_ids
     
     # <pad> 토큰을 -100으로 설정하여 손실 계산에서 제외
-    labels = labels.clone().detach()
-    labels[labels == tokenizer.pad_token_id] = -100
+    labels = [[(label if label != tokenizer.pad_token_id else -100) for label in label_list] for label_list in labels]
     
     inputs["labels"] = labels
     return inputs
@@ -53,7 +51,7 @@ train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
 # DataLoader 준비
-collator = DataCollatorWithPadding(tokenizer=tokenizer, padding=True)
+collator = DataCollatorWithPadding(tokenizer=tokenizer)
 train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=8, collate_fn=collator)
 eval_dataloader = DataLoader(val_dataset, batch_size=8, collate_fn=collator)
 
@@ -85,7 +83,7 @@ for epoch in range(num_epochs):
 
         # 매 스텝마다 train loss 로그
         train_loss += loss.item()
-        wandb.log({"train/loss": loss.item(), "step": step + epoch * len(train_dataloader)})
+        wandb.log({"train/loss": loss.item(), "train/step": step + epoch * len(train_dataloader)})
 
     # 에폭 당 평균 train loss 계산
     avg_train_loss = train_loss / len(train_dataloader)
