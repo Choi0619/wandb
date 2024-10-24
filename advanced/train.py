@@ -50,8 +50,9 @@ valid_dataset = Dataset.from_dict({
 def formatting_prompts_func(example):
     # 질문과 답변을 하나의 텍스트로 연결하여 토크나이저에 전달
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    # 텍스트를 토크나이저로 인코딩하여 입력 ID 반환
-    return tokenizer(text, padding="max_length", max_length=1024, truncation=True)
+    return {
+        "input_ids": tokenizer.encode(text, padding="max_length", max_length=1024, truncation=True)  # encode로 단일 입력 텍스트를 처리
+    }
 
 # 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
 response_template = " ### Answer:"
