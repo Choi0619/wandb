@@ -35,8 +35,11 @@ dataset = dataset.train_test_split(test_size=0.2, shuffle=True)
 train_dataset = dataset["train"]
 val_dataset = dataset["test"]
 
+# 템플릿 설정 (Therapist 답변을 기준으로 함)
+response_template = "### Therapist:"
+
 # 데이터 Collator (Completion 전용)
-collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
+collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer, response_template=response_template)
 
 # 텍스트 포맷 함수 정의 (프롬프트와 응답을 합침)
 def formatting_prompts_func(example):
