@@ -54,14 +54,18 @@ def preprocess_function(examples):
 train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
-# 데이터 콜레이터 정의 (응답 템플릿 제거)
-collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
+# 응답 템플릿과 데이터 콜레이터 정의
+response_template = " ### Answer:"
+collator = DataCollatorForCompletionOnlyLM(response_template=response_template, tokenizer=tokenizer)
 
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
     output_dir="./results",
-    evaluation_strategy="epoch",
-    logging_strategy="epoch",
+    evaluation_strategy="steps",  # evaluate at specific steps instead of epochs
+    eval_steps=500,  # evaluate every 500 steps
+    logging_strategy="steps",  # log after every specific number of steps
+    logging_steps=100,  # log every 100 steps
+    save_total_limit=1,  # keep only 1 checkpoint
     per_device_train_batch_size=1,  # 배치 크기 줄이기
     per_device_eval_batch_size=1,    # 배치 크기 줄이기
     num_train_epochs=5,  # epoch 수
