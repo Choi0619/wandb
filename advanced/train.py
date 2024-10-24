@@ -53,8 +53,9 @@ def preprocess_function(examples):
 train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
-# 데이터 콜레이터 정의 (응답 템플릿 제거)
-collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
+# 데이터 콜레이터 정의 (응답 템플릿 추가)
+response_template = " ### Answer:"
+collator = DataCollatorForCompletionOnlyLM(response_template=response_template, tokenizer=tokenizer)
 
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
