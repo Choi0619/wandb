@@ -65,8 +65,7 @@ print(f"Dataset 예시: {train_dataset[0]}")
 # Data formatting
 def formatting_prompts_func(example):
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    inputs = tokenizer(text, padding="max_length", max_length=512, truncation=True, return_tensors="pt")
-    return {"input_ids": inputs["input_ids"].to('cuda'), "attention_mask": inputs["attention_mask"].to('cuda')}  # GPU로 이동
+    return {"input_ids": tokenizer(text, padding="max_length", max_length=512, truncation=True)["input_ids"]}
 
 # 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
 response_template = " ### Answer:"
@@ -83,7 +82,7 @@ trainer = SFTTrainer(
         eval_steps=100,
         per_device_train_batch_size=1,  # 배치 크기를 줄임
         per_device_eval_batch_size=1,   # 평가 배치 크기도 줄임
-        num_train_epochs=5,  # Epoch을 5로 설정
+        num_train_epochs=3,
         logging_steps=10,
         gradient_accumulation_steps=4,  # Gradient Accumulation 적용
         fp16=True,  # Mixed Precision 사용
@@ -101,12 +100,12 @@ trainer.train()
 # 모델 저장
 trainer.save_model("./trained_model")
 
-# GPU 캐시 정리
+# 학습 종료 후 GPU 캐시 정리
 torch.cuda.empty_cache()
 
 # 샘플 데이터로 모델 테스트
 def generate_answer(instruction):
-    inputs = tokenizer(f"### Question: {instruction}\n ### Answer:", return_tensors="pt").input_ids.to('cuda')  # 입력을 GPU로 이동
+    inputs = tokenizer(f"### Question: {instruction}\n ### Answer:", return_tensors="pt").input_ids.to('cuda')  # CUDA로 전송
     outputs = model.generate(inputs, max_length=100, pad_token_id=tokenizer.pad_token_id)
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
@@ -115,6 +114,3 @@ sample_question = "요즘 아무 이유 없이 눈물이 나요. 이런 기분�
 generated_response = generate_answer(sample_question)
 print(f"샘플 질문: {sample_question}")
 print(f"모델의 답변: {generated_response}")
-
-# Wandb 로그 종료
-wandb.finish()
