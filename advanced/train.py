@@ -5,14 +5,14 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingA
 from datasets import Dataset
 
 # Wandb 설정
-wandb.init(project='LLM_instruction_tuning', name='gpt-neo-1.3B-finetune')
+wandb.init(project="LLM_instruction_tuning", name="gpt2-medium-instruction-tuning")
 
 # 모델과 토크나이저 불러오기
-model_name = "EleutherAI/gpt-neo-1.3B"
+model_name = "gpt2-medium"  # GPT2-Medium 모델 사용
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name)
 
-# 패딩 토큰 추가
+# 패딩 토큰 추가 (GPT-2 모델의 경우 기본적으로 패딩 토큰이 없기 때문에 추가)
 if tokenizer.pad_token is None:
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 model.resize_token_embeddings(len(tokenizer))
@@ -24,7 +24,7 @@ with open('corpus.json', 'r', encoding='utf-8') as f:
 # 데이터 전처리
 def preprocess_data(data):
     instructions, outputs = [], []
-    for i in range(0, len(data), 2):  # user와 therapist가 번갈아 나오는 구조라 가정
+    for i in range(0, len(data), 2):  # user와 therapist가 번갈아 나오는 구조로 가정
         if data[i]['role'] == 'user' and data[i+1]['role'] == 'therapist':
             instructions.append(data[i]['content'])
             outputs.append(data[i+1]['content'])
@@ -38,7 +38,7 @@ dataset = Dataset.from_dict({
     "output": outputs
 })
 
-# Train, Validation 데이터셋 나누기
+# Train, Validation 데이터셋 나누기 (8:2 비율)
 train_test_split = dataset.train_test_split(test_size=0.2)
 train_dataset = train_test_split["train"]
 eval_dataset = train_test_split["test"]
@@ -59,7 +59,7 @@ training_args = TrainingArguments(
     output_dir="./results",
     per_device_train_batch_size=2,
     per_device_eval_batch_size=2,
-    num_train_epochs=3,
+    num_train_epochs=5,  # 에포크 수는 조절 가능
     logging_steps=100,
     evaluation_strategy="steps",
     eval_steps=100,
