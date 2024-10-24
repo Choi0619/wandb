@@ -26,11 +26,11 @@ with open("corpus.json", "r", encoding="utf-8") as f:
 
 # 데이터를 질문과 답변의 쌍으로 형식화
 formatted_data = []
-for i in range(0, len(corpus), 2):  # 짝수 인덱스는 user, 홀수 인덱스는 therapist
-    if corpus[i]["role"] == "user" and corpus[i+1]["role"] == "therapist":
+for i in range(0, len(corpus) - 1, 2):  # 짝수 인덱스는 user, 홀수 인덱스는 therapist
+    if corpus[i]["role"] == "user" and corpus[i + 1]["role"] == "therapist":
         formatted_data.append({
             "instruction": corpus[i]["content"],  # user의 질문
-            "response": corpus[i+1]["content"]    # therapist의 답변
+            "response": corpus[i + 1]["content"]  # therapist의 답변
         })
 
 # 데이터를 8:2로 나누어 train/validation dataset 만들기
@@ -38,18 +38,20 @@ train_data, valid_data = train_test_split(formatted_data, test_size=0.2)
 
 # train과 validation 데이터를 Dataset 객체로 변환
 train_dataset = Dataset.from_dict({
-    "instruction": [d["instruction"] for d in train_data], 
+    "instruction": [d["instruction"] for d in train_data],
     "response": [d["response"] for d in train_data]
 })
 valid_dataset = Dataset.from_dict({
-    "instruction": [d["instruction"] for d in valid_data], 
+    "instruction": [d["instruction"] for d in valid_data],
     "response": [d["response"] for d in valid_data]
 })
 
 # Data formatting: 토크나이저가 기대하는 형태로 문자열을 전달
 def formatting_prompts_func(example):
+    # 질문과 답변을 하나의 텍스트로 연결하여 토크나이저에 전달
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    return {"input_ids": tokenizer.encode(text, padding="max_length", max_length=1024, truncation=True)}
+    # 텍스트를 토크나이저로 인코딩하여 입력 ID 반환
+    return tokenizer(text, padding="max_length", max_length=1024, truncation=True)
 
 # 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
 response_template = " ### Answer:"
