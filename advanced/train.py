@@ -57,22 +57,34 @@ training_args = TrainingArguments(
     output_dir="./results",
     per_device_train_batch_size=2,
     per_device_eval_batch_size=2,
-    num_train_epochs=3,
+    num_train_epochs=5,  # 더 많은 epoch으로 설정
     evaluation_strategy="steps",
     eval_steps=100,
     logging_steps=100,
     save_steps=100,
     save_total_limit=2,
+    remove_unused_columns=False,  # 컬럼 삭제를 하지 않도록 설정
     report_to="wandb",  # wandb를 사용해 로깅
     load_best_model_at_end=True
 )
+
+# 데이터셋에서 instruction과 output을 input_ids로 변환하는 함수
+def tokenize_function(examples):
+    inputs = tokenizer(examples['instruction'], padding="max_length", truncation=True, max_length=512)
+    outputs = tokenizer(examples['output'], padding="max_length", truncation=True, max_length=512)
+    inputs["labels"] = outputs["input_ids"]  # labels에 output의 input_ids를 할당
+    return inputs
+
+# 데이터셋을 토크나이즈
+tokenized_train_dataset = train_dataset.map(tokenize_function, batched=True)
+tokenized_eval_dataset = eval_dataset.map(tokenize_function, batched=True)
 
 # Trainer 설정
 trainer = Trainer(
     model=model,
     args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=eval_dataset,
+    train_dataset=tokenized_train_dataset,
+    eval_dataset=tokenized_eval_dataset,
     tokenizer=tokenizer
 )
 
