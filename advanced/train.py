@@ -1,81 +1,73 @@
 import os
+from dotenv import load_dotenv
+from huggingface_hub import login
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from datasets import load_dataset, Dataset
+from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
 from sklearn.model_selection import train_test_split
-from datasets import Dataset, DatasetDict
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM, SFTConfig
-import wandb
 
-# 1. Wandb 설정
-wandb.init(project='Mind-Shelter')  # 프로젝트 이름 설정
-wandb.run.name = 'sft-instruction-tuning'
+# .env 파일에서 환경 변수 로드
+load_dotenv()
 
-# 2. 데이터 로드 및 Train/Validation Split
+# 환경 변수에서 HF_TOKEN 불러오기
+hf_token = os.getenv("HF_TOKEN")
+
+# Hugging Face 로그인
+login(hf_token)
+
+# gemma-2b 모델과 토크나이저 불러오기
+tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
+model = AutoModelForCausalLM.from_pretrained("google/gemma-2b", device_map="auto")
+
+# 데이터 로드
 with open("corpus.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
+    corpus = json.load(f)
 
-# 데이터를 8:2 비율로 나눔
-train_data, valid_data = train_test_split(data, test_size=0.2)
+# 데이터를 질문과 답변의 쌍으로 형식화
+formatted_data = []
+for i in range(0, len(corpus), 2):
+    formatted_data.append({
+        "instruction": corpus[i]["content"],  # 질문
+        "response": corpus[i+1]["content"]    # 답변
+    })
 
-# Dataset 형태로 변환
-train_dataset = Dataset.from_list(train_data)
-valid_dataset = Dataset.from_list(valid_data)
+# 데이터를 8:2로 나누어 train/validation dataset 만들기
+train_data, valid_data = train_test_split(formatted_data, test_size=0.2)
 
-# HuggingFace `DatasetDict`로 묶음
-dataset = DatasetDict({
-    'train': train_dataset,
-    'validation': valid_dataset
-})
+# train과 validation 데이터를 Dataset 객체로 변환
+train_dataset = Dataset.from_dict({"instruction": [d["instruction"] for d in train_data], "response": [d["response"] for d in train_data]})
+valid_dataset = Dataset.from_dict({"instruction": [d["instruction"] for d in valid_data], "response": [d["response"] for d in valid_data]})
 
-# 3. 모델과 토크나이저 로드
-model = AutoModelForCausalLM.from_pretrained("facebook/opt-350m")
-tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
+# Data formatting
+def formatting_prompts_func(example):
+    text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
+    return {"input_ids": tokenizer(text, padding="max_length", max_length=1024, truncation=True)["input_ids"]}
 
-# 4. Formatting 및 Collator 설정
-response_template = "### Answer:"
+# 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
+response_template = " ### Answer:"
 collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
-def formatting_prompts_func(example):
-    formatted_texts = []
-    for i in range(len(example['role'])):
-        if example['role'][i] == "user":
-            formatted_texts.append(f"### Question: {example['content'][i]}")
-        else:
-            formatted_texts.append(f"### Answer: {example['content'][i]}")
-    return {"text": formatted_texts}
-
-# 5. Trainer 설정
-training_args = TrainingArguments(
-    output_dir="/tmp/clm-instruction-tuning",
-    evaluation_strategy="steps",  # 주기적으로 validation 실행
-    per_device_train_batch_size=4,  # 배치 크기
-    per_device_eval_batch_size=4,
-    logging_steps=10,
-    save_steps=10,
-    save_total_limit=2,  # 저장할 체크포인트 수 제한
-    num_train_epochs=3,
-    report_to="wandb",  # wandb로 결과 보고
-    load_best_model_at_end=True,
-    logging_dir="/tmp/logs",
-    eval_steps=50,
-)
-
+# SFT Trainer 설정
 trainer = SFTTrainer(
     model=model,
-    train_dataset=dataset['train'],
-    eval_dataset=dataset['validation'],
-    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset=valid_dataset,
+    args=SFTConfig(
+        output_dir="./results",
+        evaluation_strategy="steps",
+        eval_steps=100,          # 몇 스텝마다 validation할지
+        per_device_train_batch_size=4,  # 배치 사이즈
+        per_device_eval_batch_size=4,
+        num_train_epochs=3,      # 학습할 epoch 수
+        logging_steps=10,        # 로그 기록 빈도
+    ),
     formatting_func=formatting_prompts_func,
     data_collator=collator,
 )
 
-# 6. 학습 시작
+# 학습 시작
 trainer.train()
 
-# 7. 학습 후 모델 및 결과 저장
-trainer.save_model("/tmp/clm-instruction-tuning-final")
-wandb.finish()
-
-# 평가 결과 로깅
-metrics = trainer.state.log_history[-1]  # 마지막 로그에서 평가 결과 가져오기
-trainer.log_metrics("final_metrics", metrics)
+# 모델 저장
+trainer.save_model("./trained_model")
