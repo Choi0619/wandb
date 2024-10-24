@@ -49,7 +49,7 @@ valid_dataset = Dataset.from_dict({
 # Data formatting: 토크나이저가 기대하는 형태로 문자열을 전달
 def formatting_prompts_func(example):
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    return tokenizer(text, padding="max_length", max_length=1024, truncation=True)
+    return {"input_ids": tokenizer.encode(text, padding="max_length", max_length=1024, truncation=True)}
 
 # 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
 response_template = " ### Answer:"
