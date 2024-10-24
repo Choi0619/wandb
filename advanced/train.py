@@ -1,12 +1,12 @@
 import os
 import torch
+import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import Dataset
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
 from sklearn.model_selection import train_test_split
 import wandb
-import argparse
 
 # ArgumentParser 설정
 parser = argparse.ArgumentParser(description="Fine-tuning GPT-2 for custom instruction-tuning")
