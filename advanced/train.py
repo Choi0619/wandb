@@ -1,6 +1,5 @@
 import os
 import torch
-from dotenv import load_dotenv
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import Dataset
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
@@ -10,9 +9,8 @@ import wandb
 
 # wandb 초기화
 wandb.init(project="LLM_instruction_tuning", entity="wrtyu0603")  # 프로젝트 이름과 wandb 계정 이름 설정
-
-# .env 파일에서 환경 변수 로드
-load_dotenv()
+wandb.run.name = 'instruction-tuning-run'  # 실행 이름 설정
+wandb.config.update({"epochs": 5, "batch_size": 8})  # wandb 설정에 학습 파라미터 추가
 
 # GPT-2 모델과 토크나이저 불러오기
 print("GPT-2 모델과 토크나이저를 로드하는 중입니다...")
@@ -85,7 +83,7 @@ trainer = SFTTrainer(
         logging_steps=10,
         gradient_accumulation_steps=4,
         fp16=True,
-        report_to="wandb",
+        report_to="wandb",  # wandb로 결과 보고
         save_strategy="steps",
         save_steps=100,
     ),
@@ -132,3 +130,7 @@ sample_question = "요즘 아무 이유 없이 눈물이 나요. 이런 기분�
 generated_response = generate_answer(sample_question)
 print(f"샘플 질문: {sample_question}")
 print(f"모델의 답변: {generated_response}")
+
+# wandb 결과 URL 출력
+wandb.finish()
+print(f"wandb URL: {wandb.run.get_url()}")
