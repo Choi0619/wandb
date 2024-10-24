@@ -37,12 +37,13 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
 
 # 전처리 함수 정의
 def preprocess_function(examples):
-    # padding=True, truncation=True 옵션을 추가하여 데이터 길이를 맞추어 줍니다.
-    inputs = tokenizer(examples['input'], max_length=256, truncation=True, padding="max_length")
-    labels = tokenizer(text_target=examples['output'], max_length=256, truncation=True, padding="max_length").input_ids
+    # input과 output 모두 tokenizer로 인코딩하고, padding=True 및 truncation=True를 설정하여 텐서 형식으로 변환
+    inputs = tokenizer(examples['input'], max_length=256, truncation=True, padding="max_length", return_tensors="pt")
+    labels = tokenizer(examples['output'], max_length=256, truncation=True, padding="max_length", return_tensors="pt").input_ids
     
     # <pad> 토큰을 -100으로 설정하여 손실 계산에서 제외
-    labels = [[(label if label != tokenizer.pad_token_id else -100) for label in label_list] for label_list in labels]
+    labels = labels.clone().detach()
+    labels[labels == tokenizer.pad_token_id] = -100
     
     inputs["labels"] = labels
     return inputs
@@ -52,7 +53,7 @@ train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
 # DataLoader 준비
-collator = DataCollatorWithPadding(tokenizer=tokenizer)
+collator = DataCollatorWithPadding(tokenizer=tokenizer, padding=True)
 train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=8, collate_fn=collator)
 eval_dataloader = DataLoader(val_dataset, batch_size=8, collate_fn=collator)
 
