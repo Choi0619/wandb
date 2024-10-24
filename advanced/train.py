@@ -15,10 +15,11 @@ with open('corpus.json', 'r', encoding='utf-8') as f:
 
 # 입력-출력 쌍 준비
 data_pairs = []
-for i in range(0, len(corpus), 2):
-    input_text = corpus[i]['content']  # 사용자 입력
-    output_text = corpus[i + 1]['content']  # 치료사 응답
-    data_pairs.append({"input": input_text, "output": output_text})
+for i in range(0, len(corpus)-1, 2):  # user와 therapist 쌍으로 진행
+    if corpus[i]['role'] == 'user' and corpus[i+1]['role'] == 'therapist':
+        input_text = corpus[i]['content']  # 사용자 입력
+        output_text = corpus[i + 1]['content']  # 치료사 응답
+        data_pairs.append({"input": input_text, "output": output_text})
 
 # 학습 및 검증 세트로 분할 (80-20 비율)
 train_data, val_data = train_test_split(data_pairs, test_size=0.2, random_state=42)
@@ -33,13 +34,17 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
 
 # 전처리 함수 정의
 def preprocess_function(examples):
-    inputs = examples['input']  # 입력 필드에 직접 접근
-    outputs = examples['output']  # 출력 필드에 직접 접근
+    inputs = examples['input']  # 사용자 입력에 접근
+    outputs = examples['output']  # 치료사 응답에 접근
     
     # 토크나이저를 사용하여 입력과 출력 토큰화
     model_inputs = tokenizer(inputs, max_length=256, truncation=True, padding="max_length")
 
+    # 라벨: 치료사 응답만 토크나이즈하여 라벨로 사용
     labels = tokenizer(outputs, max_length=256, truncation=True, padding="max_length").input_ids
+    
+    # <pad> 토큰 제거
+    labels = [(label if label != tokenizer.pad_token_id else -100) for label in labels]
     model_inputs["labels"] = labels  # 라벨 추가
     return model_inputs
 
@@ -58,6 +63,7 @@ sft_config = SFTConfig(
     logging_strategy="epoch",
     per_device_train_batch_size=1,  # 배치 크기 줄이기
     per_device_eval_batch_size=1,    # 배치 크기 줄이기
+    num_train_epochs=5,  # epoch 수
 )
 
 trainer = SFTTrainer(
