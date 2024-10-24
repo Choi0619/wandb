@@ -2,6 +2,7 @@ import os
 import requests
 import json
 from dotenv import load_dotenv
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # Load environment variables from .env file
 load_dotenv()
@@ -9,26 +10,19 @@ load_dotenv()
 # Your Hugging Face API token (loaded from .env)
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-# API URL for the Hugging Face model
-API_URL = "https://api-inference.huggingface.co/models/gemma-2b"
+# Load tokenizer and model
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+model = AutoModelForCausalLM.from_pretrained("gpt2")
 
-# Headers with the authorization token
-headers = {
-    "Authorization": f"Bearer {HF_TOKEN}"
-}
+# Test prompt
+prompt = "Explain about dogs."
 
-# The input prompt for the model
-data = {
-    "inputs": "Explain about dogs."
-}
+# Tokenize input
+inputs = tokenizer(prompt, return_tensors="pt")
 
-# Make the POST request to the Hugging Face API
-response = requests.post(API_URL, headers=headers, json=data)
+# Generate response
+outputs = model.generate(**inputs)
 
-# Check for successful response and print the output
-if response.status_code == 200:
-    output = response.json()
-    print("Response from the model:", output[0]['generated_text'])
-else:
-    print(f"Request failed with status code {response.status_code}")
-    print(response.text)
+# Decode and print the generated text
+generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+print("Generated text:", generated_text)
