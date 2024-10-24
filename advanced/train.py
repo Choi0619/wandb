@@ -67,10 +67,15 @@ try:
 except Exception as e:
     print(f"Dataset 변환 중 오류 발생: {e}")
 
-# 8. 데이터 포맷팅 및 토크나이징
+# 8. 데이터 포맷팅 및 토크나이징 수정
 def formatting_prompts_func(example):
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    return tokenizer(text, padding="max_length", max_length=1024, truncation=True)
+    # input_ids와 attention_mask를 반환하여 tokenizer가 올바르게 동작하도록 수정
+    tokenized = tokenizer(text, padding="max_length", max_length=1024, truncation=True)
+    return {
+        "input_ids": tokenized["input_ids"],
+        "attention_mask": tokenized["attention_mask"]
+    }
 
 # 9. 데이터 콜레이터 정의
 response_template = " ### Answer:"
