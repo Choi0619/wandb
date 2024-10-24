@@ -75,10 +75,10 @@ trainer = SFTTrainer(
 # 학습 시작
 train_result = trainer.train()
 
-# 매 epoch마다 학습 손실 값을 로그로 기록
-for epoch in range(int(sft_config.num_train_epochs)):
-    train_metrics = trainer.evaluate(train_dataset)  # 학습 데이터셋에 대해 평가를 실행하여 손실 값을 얻음
-    wandb.log({"train/loss": train_metrics['eval_loss'], "epoch": epoch + 1})  # eval_loss로 train_loss 대체 가능
+# WandB에 매 스텝마다 train_loss를 기록
+for log in trainer.state.log_history:
+    if 'loss' in log:
+        wandb.log({"train/loss": log['loss'], "train/global_step": log['step']})
 
 # 모델 저장
 trainer.save_model("./fine_tuned_therapist_chatbot")
@@ -95,8 +95,8 @@ df = pd.DataFrame(trainer.state.log_history)
 print(df)  # 로그 기록 출력 (손실 값이 기록되었는지 확인)
 
 # 학습 및 평가 결과 로깅
-trainer.log_metrics("train", train_metrics)
-trainer.save_metrics("train", train_metrics)
+trainer.log_metrics("train", train_result.metrics)
+trainer.save_metrics("train", train_result.metrics)
 
 trainer.log_metrics("eval", eval_metrics)
 trainer.save_metrics("eval", eval_metrics)
