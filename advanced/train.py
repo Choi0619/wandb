@@ -9,7 +9,10 @@ from sklearn.model_selection import train_test_split
 import wandb
 
 # wandb 초기화
-wandb.init(project="LLM_instruction_tuning", entity="wrtyu0603")  # entity에 자신의 wandb 계정 이름 입력
+wandb.init(project="LLM_instruction_tuning", entity="wrtyu0603")  # 프로젝트 이름과 wandb 계정 이름 설정
+
+# .env 파일에서 환경 변수 로드
+load_dotenv()
 
 # GPT-2 모델과 토크나이저 불러오기
 print("GPT-2 모델과 토크나이저를 로드하는 중입니다...")
@@ -18,12 +21,8 @@ tokenizer = AutoTokenizer.from_pretrained("gpt2")
 # pad_token 설정 (eos_token으로 설정)
 tokenizer.pad_token = tokenizer.eos_token
 
-# 모델 로드 (GPU로 이동)
-model = AutoModelForCausalLM.from_pretrained("gpt2").to('cuda')
+model = AutoModelForCausalLM.from_pretrained("gpt2", device_map="auto")
 print("GPT-2 모델과 토크나이저가 성공적으로 로드되었습니다.")
-
-# GPU 캐시 정리
-torch.cuda.empty_cache()
 
 # Gradient checkpointing 활성화 (메모리 절약)
 model.gradient_checkpointing_enable()
@@ -80,15 +79,15 @@ trainer = SFTTrainer(
         output_dir="./results",
         evaluation_strategy="steps",
         eval_steps=100,
-        per_device_train_batch_size=1,  # 배치 크기를 줄임
-        per_device_eval_batch_size=1,   # 평가 배치 크기도 줄임
-        num_train_epochs=3,
+        per_device_train_batch_size=8,  # 배치 크기를 늘림
+        per_device_eval_batch_size=8,
+        num_train_epochs=5,  # 학습 epoch 증가
         logging_steps=10,
-        gradient_accumulation_steps=4,  # Gradient Accumulation 적용
-        fp16=True,  # Mixed Precision 사용
-        report_to="wandb",  # wandb로 결과 보고
-        save_strategy="steps",  # 모델 저장 주기 설정
-        save_steps=100,  # 모델 저장할 step 수
+        gradient_accumulation_steps=4,
+        fp16=True,
+        report_to="wandb",
+        save_strategy="steps",
+        save_steps=100,
     ),
     data_collator=collator,
 )
@@ -105,8 +104,9 @@ torch.cuda.empty_cache()
 
 # 샘플 데이터로 모델 테스트
 def generate_answer(instruction):
-    inputs = tokenizer(f"### Question: {instruction}\n ### Answer:", return_tensors="pt").input_ids.to('cuda')  # CUDA로 전송
-    outputs = model.generate(inputs, max_length=100, pad_token_id=tokenizer.pad_token_id)
+    inputs = tokenizer(f"### Question: {instruction}\n ### Answer:", return_tensors="pt", padding=True, truncation=True)
+    inputs = {key: value.to('cuda') for key, value in inputs.items()}  # 모든 입력을 GPU로 전송
+    outputs = model.generate(inputs['input_ids'], attention_mask=inputs['attention_mask'], max_length=100, pad_token_id=tokenizer.pad_token_id)
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 # 예시 질문
