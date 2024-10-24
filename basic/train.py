@@ -21,22 +21,25 @@ from transformers import (
     HfArgumentParser,
     Trainer,
     TrainingArguments,
-    default_data_collator
+    default_data_collator,
+    EarlyStoppingCallback,
+    IntervalStrategy,
+    WandbCallback  # Added WandbCallback
 )
 from transformers.trainer_utils import get_last_checkpoint
 
 # Wandb 프로젝트 초기화
-wandb.init(project='gyuhwan')  # 프로젝트 이름을 'gyuhwan'으로 설정
+wandb.init(project='gyuhwan', entity='wrtyu0603-illinois-institute-of-technology')  # 프로젝트와 엔터티 이름 설정
 wandb.run.name = 'gpt-finetuning'  # Wandb 실행 이름 설정
 
 @dataclass
 class Arguments:
-    model_name_or_path: Optional[str] = field(default=None)  # 파인튜닝할 HuggingFace 모델 이름
-    torch_dtype: Optional[str] = field(default=None, metadata={'choices': ['auto', 'bfloat16', 'float16', 'float32']})  # 모델의 precision(정밀도)
-    dataset_name: Optional[str] = field(default=None)  # HuggingFace 허브에서 사용할 데이터셋 이름
-    dataset_config_name: Optional[str] = field(default=None)  # 데이터셋의 설정 이름
-    block_size: int = field(default=1024)  # 파인튜닝할 때 사용할 입력 텍스트의 길이
-    num_workers: Optional[int] = field(default=None)  # 데이터 로드 시 사용할 worker 수
+    model_name_or_path: Optional[str] = field(default=None)
+    torch_dtype: Optional[str] = field(default=None, metadata={'choices': ['auto', 'bfloat16', 'float16', 'float32']})
+    dataset_name: Optional[str] = field(default=None)
+    dataset_config_name: Optional[str] = field(default=None)
+    block_size: int = field(default=1024)
+    num_workers: Optional[int] = field(default=None)
 
 parser = HfArgumentParser((Arguments, TrainingArguments))
 args, training_args = parser.parse_args_into_dataclasses()
@@ -122,16 +125,17 @@ with training_args.main_process_first(desc="grouping texts together"):
 
 # 학습 및 평가용 데이터셋 분리
 train_dataset = lm_datasets["train"]
-eval_dataset = lm_datasets["validation"]  # 평가(validation) 데이터셋 추가
+eval_dataset = lm_datasets["validation"]
 
 # Trainer 정의
 trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=train_dataset,
-    eval_dataset=eval_dataset,  # 평가 데이터셋 추가
+    eval_dataset=eval_dataset,
     tokenizer=tokenizer,
-    data_collator=default_data_collator
+    data_collator=default_data_collator,
+    callbacks=[WandbCallback()]  # WandbCallback 추가하여 자동으로 Wandb에 로깅
 )
 
 # 체크포인트 설정
@@ -146,7 +150,7 @@ else:
 train_result = trainer.train(resume_from_checkpoint=checkpoint)
 trainer.save_model()
 
-# 학습 및 평가 결과 로깅
+# 학습 및 평가 결과 Wandb에 기록
 metrics = train_result.metrics
 trainer.log_metrics("train", metrics)
 trainer.save_metrics("train", metrics)
@@ -157,3 +161,6 @@ trainer.log_metrics("eval", eval_metrics)
 trainer.save_metrics("eval", eval_metrics)
 
 trainer.save_state()
+
+# Wandb 종료
+wandb.finish()

@@ -13,8 +13,7 @@ parser.add_argument('--output_dir', type=str, required=True, help='Model output 
 args = parser.parse_args()
 
 # Wandb 프로젝트 초기화
-wandb.init(project='LLM_instruction_tuning')
-wandb.run.name = 'gpt2-instruction-tuning'
+wandb.init(project='LLM_instruction_tuning', name='gpt2-instruction-tuning')
 
 # 로깅 설정
 logging.basicConfig(
@@ -73,7 +72,14 @@ trainer = SFTTrainer(
     model=model,
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,  # 평가 데이터 추가
-    args=SFTConfig(output_dir=args.output_dir, num_train_epochs=3, per_device_train_batch_size=2, logging_steps=100, evaluation_strategy="steps", eval_steps=100),
+    args=SFTConfig(
+        output_dir=args.output_dir, 
+        num_train_epochs=3, 
+        per_device_train_batch_size=2, 
+        logging_steps=100, 
+        evaluation_strategy="steps", 
+        eval_steps=100
+    ),
     formatting_func=formatting_prompts_func,
     data_collator=collator,
 )
@@ -87,6 +93,9 @@ wandb.log({"train_loss": train_result.training_loss})
 # 평가 실행
 eval_result = trainer.evaluate()
 wandb.log({"eval_loss": eval_result['eval_loss']})
+
+# 모델과 Tokenizer 저장
+trainer.save_model(args.output_dir)
 
 # Wandb 학습 종료
 wandb.finish()
