@@ -4,8 +4,8 @@ from datasets import Dataset
 import json
 from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 
-# 사용할 모델 정의 (GPT-Neo 1.3B)
-model_name = "EleutherAI/gpt-neo-1.3B"
+# 사용할 모델 정의 (GPT-2 Medium)
+model_name = "gpt2-medium"
 
 # 모델과 토크나이저 불러오기
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -14,7 +14,7 @@ model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
 # Add padding token if it doesn't exist
 if tokenizer.pad_token is None:
     tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
-model.resize_token_embeddings(len(tokenizer))  # Resize embeddings to account for the new token
+model.resize_token_embeddings(len(tokenizer))
 
 # 데이터 로드 (corpus.json 파일에서)
 with open('corpus.json', 'r', encoding='utf-8') as f:
@@ -50,19 +50,19 @@ def formatting_prompts_func(example):
 response_template = " ### Answer:"
 collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
-# SFTConfig 설정 (memory optimization techniques)
+# SFTConfig 설정
 config = SFTConfig(
     output_dir="./results",
     num_train_epochs=3,
-    per_device_train_batch_size=1,  # Keep batch size low to avoid OOM
-    per_device_eval_batch_size=1,
+    per_device_train_batch_size=2,  # Batch size of 2 to manage memory
+    per_device_eval_batch_size=2,
     logging_steps=100,
     evaluation_strategy="steps",
     eval_steps=100,
     save_steps=100,
-    max_seq_length=512,  # Reduce sequence length to save memory
-    gradient_accumulation_steps=4,  # Accumulate gradients over 4 steps
-    fp16=True,  # Enable mixed precision training (saves memory)
+    max_seq_length=512,  # Adjust sequence length
+    gradient_accumulation_steps=4,  # Accumulate gradients
+    fp16=True  # Mixed precision training for memory efficiency
 )
 
 # SFTTrainer 설정
