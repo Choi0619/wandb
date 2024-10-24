@@ -1,6 +1,5 @@
 import os
 import torch
-import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import Dataset
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
@@ -8,17 +7,10 @@ import json
 from sklearn.model_selection import train_test_split
 import wandb
 
-# ArgumentParser 설정
-parser = argparse.ArgumentParser(description="Fine-tuning GPT-2 for custom instruction-tuning")
-parser.add_argument("--output_dir", type=str, required=True, help="Output directory where model checkpoints will be saved")
-parser.add_argument("--batch_size", type=int, default=8, help="Training batch size")
-parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs")
-args = parser.parse_args()
-
 # wandb 초기화
 wandb.init(project="LLM_instruction_tuning", entity="wrtyu0603")  # 프로젝트 이름과 wandb 계정 이름 설정
 wandb.run.name = 'instruction-tuning-run'  # 실행 이름 설정
-wandb.config.update({"epochs": args.num_train_epochs, "batch_size": args.batch_size})  # wandb 설정에 학습 파라미터 추가
+wandb.config.update({"epochs": 5, "batch_size": 8})  # wandb 설정에 학습 파라미터 추가
 
 # GPT-2 모델과 토크나이저 불러오기
 print("GPT-2 모델과 토크나이저를 로드하는 중입니다...")
@@ -82,12 +74,12 @@ trainer = SFTTrainer(
     train_dataset=train_dataset.map(formatting_prompts_func),
     eval_dataset=valid_dataset.map(formatting_prompts_func),
     args=SFTConfig(
-        output_dir=args.output_dir,
+        output_dir="./results",
         evaluation_strategy="steps",
         eval_steps=100,
-        per_device_train_batch_size=args.batch_size,  # 배치 크기
-        per_device_eval_batch_size=args.batch_size,
-        num_train_epochs=args.num_train_epochs,  # 학습 epoch
+        per_device_train_batch_size=8,  # 배치 크기를 늘림
+        per_device_eval_batch_size=8,
+        num_train_epochs=5,  # 학습 epoch 증가
         logging_steps=10,
         gradient_accumulation_steps=4,
         fp16=True,
@@ -115,26 +107,10 @@ trainer.save_metrics("eval", eval_metrics)
 trainer.save_state()
 
 # 모델 저장
-trainer.save_model(args.output_dir)
+trainer.save_model("./trained_model")
 
-# 샘플 데이터로 모델 테스트
-def generate_answer(instruction):
-    inputs = tokenizer(f"### Question: {instruction}\n ### Answer:", return_tensors="pt", padding=True, truncation=True)
-    inputs = {key: value.to('cuda') for key, value in inputs.items()}  # 모든 입력을 GPU로 전송
-    outputs = model.generate(
-        inputs['input_ids'],
-        attention_mask=inputs['attention_mask'],
-        max_length=150,  # 생성 길이를 늘림
-        pad_token_id=tokenizer.pad_token_id
-    )
-    # '### Question:' 제거하고 답변만 반환
-    return tokenizer.decode(outputs[0], skip_special_tokens=True).split("### Answer:")[-1].strip()
-
-# 예시 질문
-sample_question = "요즘 아무 이유 없이 눈물이 나요. 이런 기분을 어떻게 해결할 수 있을까요?"
-generated_response = generate_answer(sample_question)
-print(f"샘플 질문: {sample_question}")
-print(f"모델의 답변: {generated_response}")
+# 학습 종료 후 GPU 캐시 정리
+torch.cuda.empty_cache()
 
 # wandb 결과 URL 출력
 wandb.finish()
