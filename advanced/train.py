@@ -41,11 +41,13 @@ def preprocess_function(examples):
     model_inputs = tokenizer(inputs, max_length=256, truncation=True, padding="max_length")
 
     # 라벨: 치료사 응답만 토크나이즈하여 라벨로 사용
-    labels = tokenizer(outputs, max_length=256, truncation=True, padding="max_length").input_ids
-    
+    with tokenizer.as_target_tokenizer():
+        labels = tokenizer(outputs, max_length=256, truncation=True, padding="max_length").input_ids
+
     # <pad> 토큰 제거
     labels = [(label if label != tokenizer.pad_token_id else -100) for label in labels]
     model_inputs["labels"] = labels  # 라벨 추가
+    
     return model_inputs
 
 # 전처리 적용
@@ -64,6 +66,7 @@ sft_config = SFTConfig(
     per_device_train_batch_size=1,  # 배치 크기 줄이기
     per_device_eval_batch_size=1,    # 배치 크기 줄이기
     num_train_epochs=5,  # epoch 수
+    fp16=False  # FP16을 비활성화하여 안정성 확보
 )
 
 trainer = SFTTrainer(
