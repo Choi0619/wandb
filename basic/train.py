@@ -38,7 +38,7 @@ formatted_data = []
 for i in range(0, len(corpus), 2):
     formatted_data.append({
         "instruction": corpus[i]["content"],  # 질문
-        "response": corpus[i+1]["content"]    # 답변
+        "response": corpus[i + 1]["content"]  # 답변
     })
 
 print(f"변환된 데이터 예시: {formatted_data[0]}")
@@ -63,7 +63,7 @@ print(f"Dataset 예시: {train_dataset[0]}")
 # Data formatting
 def formatting_prompts_func(example):
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    inputs = tokenizer(text, padding="max_length", max_length=512, truncation=True, return_tensors="pt")  # return_tensors="pt"로 텐서 반환
+    inputs = tokenizer(text, padding="max_length", max_length=512, truncation=True, return_tensors="pt")
     return {
         "input_ids": inputs["input_ids"].to(model.device),  # input_ids를 GPU로 이동
         "attention_mask": inputs["attention_mask"].to(model.device)  # attention_mask를 GPU로 이동
@@ -88,6 +88,7 @@ trainer = SFTTrainer(
         logging_steps=10,
         gradient_accumulation_steps=4,    # Gradient Accumulation 적용
         fp16=True,                         # Mixed Precision 사용
+        use_cache=False                     # Gradient checkpointing과 함께 사용할 경우 cache 사용 비활성화
     ),
     data_collator=collator,
 )
