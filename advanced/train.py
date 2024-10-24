@@ -9,10 +9,7 @@ from sklearn.model_selection import train_test_split
 import wandb
 
 # wandb 초기화
-wandb.init(project="LLM_instruction_tuning", entity="your_wandb_username")  # 프로젝트 이름과 wandb 계정 이름 수정
-
-# .env 파일에서 환경 변수 로드
-load_dotenv()
+wandb.init(project="LLM_instruction_tuning", entity="wrtyu0603")  # entity에 자신의 wandb 계정 이름 입력
 
 # GPT-2 모델과 토크나이저 불러오기
 print("GPT-2 모델과 토크나이저를 로드하는 중입니다...")
@@ -21,7 +18,8 @@ tokenizer = AutoTokenizer.from_pretrained("gpt2")
 # pad_token 설정 (eos_token으로 설정)
 tokenizer.pad_token = tokenizer.eos_token
 
-model = AutoModelForCausalLM.from_pretrained("gpt2", device_map="auto")
+# 모델 로드 (GPU로 이동)
+model = AutoModelForCausalLM.from_pretrained("gpt2").to('cuda')
 print("GPT-2 모델과 토크나이저가 성공적으로 로드되었습니다.")
 
 # GPU 캐시 정리
@@ -67,7 +65,8 @@ print(f"Dataset 예시: {train_dataset[0]}")
 # Data formatting
 def formatting_prompts_func(example):
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    return {"input_ids": tokenizer(text, padding="max_length", max_length=512, truncation=True)["input_ids"]}
+    inputs = tokenizer(text, padding="max_length", max_length=512, truncation=True, return_tensors="pt")
+    return {"input_ids": inputs["input_ids"].to('cuda'), "attention_mask": inputs["attention_mask"].to('cuda')}  # GPU로 이동
 
 # 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
 response_template = " ### Answer:"
@@ -84,7 +83,7 @@ trainer = SFTTrainer(
         eval_steps=100,
         per_device_train_batch_size=1,  # 배치 크기를 줄임
         per_device_eval_batch_size=1,   # 평가 배치 크기도 줄임
-        num_train_epochs=3,
+        num_train_epochs=5,  # Epoch을 5로 설정
         logging_steps=10,
         gradient_accumulation_steps=4,  # Gradient Accumulation 적용
         fp16=True,  # Mixed Precision 사용
@@ -102,12 +101,12 @@ trainer.train()
 # 모델 저장
 trainer.save_model("./trained_model")
 
-# 학습 종료 후 GPU 캐시 정리
+# GPU 캐시 정리
 torch.cuda.empty_cache()
 
 # 샘플 데이터로 모델 테스트
 def generate_answer(instruction):
-    inputs = tokenizer(f"### Question: {instruction}\n ### Answer:", return_tensors="pt").input_ids
+    inputs = tokenizer(f"### Question: {instruction}\n ### Answer:", return_tensors="pt").input_ids.to('cuda')  # 입력을 GPU로 이동
     outputs = model.generate(inputs, max_length=100, pad_token_id=tokenizer.pad_token_id)
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
@@ -116,3 +115,6 @@ sample_question = "요즘 아무 이유 없이 눈물이 나요. 이런 기분�
 generated_response = generate_answer(sample_question)
 print(f"샘플 질문: {sample_question}")
 print(f"모델의 답변: {generated_response}")
+
+# Wandb 로그 종료
+wandb.finish()
