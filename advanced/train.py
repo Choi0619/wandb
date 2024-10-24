@@ -1,8 +1,12 @@
 import torch
+import wandb
+import json
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
 from datasets import Dataset
-import json
 from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
+
+# Wandb 프로젝트 초기화
+wandb.init(project="LLM_instruction_tuning", name="gpt2-medium-instruction-tuning")
 
 # 사용할 모델 정의 (GPT-2 Medium)
 model_name = "gpt2-medium"
@@ -79,11 +83,19 @@ trainer = SFTTrainer(
 # 학습 실행
 trainer.train()
 
-# 샘플 프롬프트로 테스트
-test_prompt = "너무 무기력한데 어떻게 해야할지 모르겠어."
-inputs = tokenizer(test_prompt, return_tensors="pt").to(model.device)
+# 모델 저장
+trainer.save_model("./fine_tuned_model")
 
-# 모델 예측
-outputs = model.generate(**inputs, max_new_tokens=50)
-generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-print(generated_text)
+# 학습 중간 및 최종 결과 Wandb에 기록
+wandb.watch(model)
+
+# 학습 결과 및 평가 로깅
+train_result = trainer.train()
+wandb.log({"train_loss": train_result.training_loss})
+
+# 평가 실행
+eval_result = trainer.evaluate()
+wandb.log({"eval_loss": eval_result['eval_loss']})
+
+# Wandb 종료
+wandb.finish()
