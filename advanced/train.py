@@ -6,11 +6,19 @@ from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
 from sklearn.model_selection import train_test_split
 import wandb
+import argparse
+
+# ArgumentParser 설정
+parser = argparse.ArgumentParser(description="Fine-tuning GPT-2 for custom instruction-tuning")
+parser.add_argument("--output_dir", type=str, required=True, help="Output directory where model checkpoints will be saved")
+parser.add_argument("--batch_size", type=int, default=8, help="Training batch size")
+parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs")
+args = parser.parse_args()
 
 # wandb 초기화
 wandb.init(project="LLM_instruction_tuning", entity="wrtyu0603")  # 프로젝트 이름과 wandb 계정 이름 설정
 wandb.run.name = 'instruction-tuning-run'  # 실행 이름 설정
-wandb.config.update({"epochs": 5, "batch_size": 8})  # wandb 설정에 학습 파라미터 추가
+wandb.config.update({"epochs": args.num_train_epochs, "batch_size": args.batch_size})  # wandb 설정에 학습 파라미터 추가
 
 # GPT-2 모델과 토크나이저 불러오기
 print("GPT-2 모델과 토크나이저를 로드하는 중입니다...")
@@ -25,7 +33,7 @@ print("GPT-2 모델과 토크나이저가 성공적으로 로드되었습니다.
 # Gradient checkpointing 활성화 (메모리 절약)
 model.gradient_checkpointing_enable()
 
-# 데이터 로드 (로컬 파일로부터 JSON 데이터셋 로드)
+# 데이터 로드
 with open("corpus.json", "r", encoding="utf-8") as f:
     corpus = json.load(f)
 
@@ -68,21 +76,18 @@ def formatting_prompts_func(example):
 response_template = " ### Answer:"
 collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
-# output directory 설정
-output_dir = "./results"
-
 # SFT Trainer 설정
 trainer = SFTTrainer(
     model=model,
     train_dataset=train_dataset.map(formatting_prompts_func),
     eval_dataset=valid_dataset.map(formatting_prompts_func),
     args=SFTConfig(
-        output_dir=output_dir,  # 여기서 output directory 설정
+        output_dir=args.output_dir,
         evaluation_strategy="steps",
         eval_steps=100,
-        per_device_train_batch_size=8,  # 배치 크기를 늘림
-        per_device_eval_batch_size=8,
-        num_train_epochs=5,  # 학습 epoch 증가
+        per_device_train_batch_size=args.batch_size,  # 배치 크기
+        per_device_eval_batch_size=args.batch_size,
+        num_train_epochs=args.num_train_epochs,  # 학습 epoch
         logging_steps=10,
         gradient_accumulation_steps=4,
         fp16=True,
@@ -110,10 +115,7 @@ trainer.save_metrics("eval", eval_metrics)
 trainer.save_state()
 
 # 모델 저장
-trainer.save_model("./trained_model")
-
-# 학습 종료 후 GPU 캐시 정리
-torch.cuda.empty_cache()
+trainer.save_model(args.output_dir)
 
 # 샘플 데이터로 모델 테스트
 def generate_answer(instruction):
