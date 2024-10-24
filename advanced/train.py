@@ -4,7 +4,6 @@ import wandb
 import torch
 from datasets import Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling
-from sklearn.model_selection import train_test_split
 from trl import SFTTrainer
 
 # Wandb 초기화
@@ -31,18 +30,30 @@ for i in range(len(corpus) - 1):
 # 데이터셋을 Hugging Face Datasets 포맷으로 변환
 dataset = Dataset.from_dict({"prompt": [d["prompt"] for d in data], "response": [d["response"] for d in data]})
 
-# Train/Validation split
-train_data, val_data = train_test_split(dataset, test_size=0.2)
+# Train/Validation split (Hugging Face Datasets 메서드 사용)
+dataset = dataset.train_test_split(test_size=0.2)
+train_dataset = dataset['train']
+val_dataset = dataset['test']
 
-train_dataset = Dataset.from_dict({
-    "input_ids": tokenizer([d["prompt"] for d in train_data], padding=True, truncation=True)["input_ids"],
-    "labels": tokenizer([d["response"] for d in train_data], padding=True, truncation=True)["input_ids"],
-})
+# 토크나이저로 데이터 전처리
+def tokenize(batch):
+    return tokenizer(batch["prompt"], padding="max_length", truncation=True, max_length=512)
 
-val_dataset = Dataset.from_dict({
-    "input_ids": tokenizer([d["prompt"] for d in val_data], padding=True, truncation=True)["input_ids"],
-    "labels": tokenizer([d["response"] for d in val_data], padding=True, truncation=True)["input_ids"],
-})
+train_dataset = train_dataset.map(tokenize, batched=True)
+val_dataset = val_dataset.map(tokenize, batched=True)
+
+# 라벨 생성
+def create_labels(batch):
+    labels = tokenizer(batch["response"], padding="max_length", truncation=True, max_length=512)["input_ids"]
+    batch["labels"] = labels
+    return batch
+
+train_dataset = train_dataset.map(create_labels, batched=True)
+val_dataset = val_dataset.map(create_labels, batched=True)
+
+# 필요한 컬럼만 남기기
+train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
+val_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 
 # 데이터 Collator 설정 (기본적인 DataCollatorForLanguageModeling 사용)
 collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
