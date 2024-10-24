@@ -3,7 +3,7 @@ import json
 import wandb
 import torch
 from datasets import Dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, TrainerCallback
 from trl import SFTTrainer
 
 # Wandb 초기화
@@ -58,6 +58,12 @@ val_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'la
 # 데이터 Collator 설정 (기본적인 DataCollatorForLanguageModeling 사용)
 collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
+# TrainerCallback을 사용하여 매 스텝마다 train_loss와 eval_loss를 기록
+class LogCallback(TrainerCallback):
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs is not None:
+            wandb.log(logs)
+
 # Trainer 설정
 training_args = TrainingArguments(
     output_dir="./output",
@@ -65,14 +71,15 @@ training_args = TrainingArguments(
     per_device_train_batch_size=4,
     per_device_eval_batch_size=4,
     evaluation_strategy="steps",
-    eval_steps=500,
-    logging_steps=100,
+    eval_steps=500,   # 매 500스텝마다 eval 수행
+    logging_steps=100,  # 매 100스텝마다 로그 기록
     save_steps=1000,
     save_total_limit=2,
     num_train_epochs=3,
-    report_to="wandb"
+    report_to="wandb"  # wandb에 보고
 )
 
+# Trainer 정의
 trainer = SFTTrainer(
     model=model,
     args=training_args,
@@ -80,6 +87,7 @@ trainer = SFTTrainer(
     eval_dataset=val_dataset,
     tokenizer=tokenizer,
     data_collator=collator,
+    callbacks=[LogCallback()]  # 로그 콜백 추가
 )
 
 # 학습 수행
