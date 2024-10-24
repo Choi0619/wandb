@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser(description="Fine-tuning GPT-2 model")
 parser.add_argument('--output_dir', type=str, required=True, help='Model output directory')
 args = parser.parse_args()
 
-# Wandb 프로젝트 초기화 (sync_tensorboard는 설정 X)
+# Wandb 프로젝트 초기화
 wandb.init(project='LLM_instruction_tuning', name='gpt2-instruction-tuning')
 
 # 로깅 설정
@@ -67,18 +67,19 @@ def formatting_prompts_func(example):
 response_template = " ### Answer:"
 collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
-# SFTTrainer 설정
+# SFTTrainer 설정 (배치 크기 및 에폭 수 증가)
 trainer = SFTTrainer(
     model=model,
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,  # 평가 데이터 추가
     args=SFTConfig(
         output_dir=args.output_dir, 
-        num_train_epochs=3, 
-        per_device_train_batch_size=2, 
-        logging_steps=100, 
+        num_train_epochs=5,  # 에폭 수를 5로 증가
+        per_device_train_batch_size=4,  # 배치 크기 4로 증가
+        logging_steps=50,  # 더 자주 로깅
         evaluation_strategy="steps", 
-        eval_steps=100
+        eval_steps=100,  # 100 스텝마다 평가
+        save_steps=200  # 200 스텝마다 모델 저장
     ),
     formatting_func=formatting_prompts_func,
     data_collator=collator,
@@ -90,9 +91,9 @@ train_result = trainer.train()
 # 학습 중간 및 최종 결과 Wandb에 기록 (매 스텝마다 기록)
 for log in trainer.state.log_history:
     if 'loss' in log:
-        wandb.log({"train_loss": log['loss']})
+        wandb.log({"train_loss": log['loss'], "step": trainer.state.global_step})
     if 'eval_loss' in log:
-        wandb.log({"eval_loss": log['eval_loss']})
+        wandb.log({"eval_loss": log['eval_loss'], "step": trainer.state.global_step})
 
 # 모델 저장
 trainer.save_model(args.output_dir)
