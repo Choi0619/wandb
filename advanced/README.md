@@ -21,7 +21,7 @@
 
 [![image](https://github.com/user-attachments/assets/6440020a-0e60-4ffd-94dc-072998383aad)](https://wandb.ai/wrtyu0603-illinois-institute-of-technology/therapist-chatbot/reports/train-loss-24-10-24-17-40-42---Vmlldzo5ODc1MDA4)
 
-- **Eval Loss**: 검증 데이터에 대한 `eval/loss`는 에폭이 진행됨에 따라 감소하다가, 마지막 에폭에서 약간 증가하는 경향을 보였습니다. 이는 **overfitting**의 가능성을 시사할 수 있습니다.
+- **Eval Loss**: 검증 데이터에 대한 `eval/loss`는 에폭이 진행됨에 따라 감소하다가, 마지막 에폭에서 약간 증가하는 경향을 보였습니다. 이는 **overfitting**의 경우로 보여집니다.
 
 ![image](https://github.com/user-attachments/assets/7b93f417-0691-45ae-bb54-4a61cbbb159b)
 
@@ -33,7 +33,7 @@
 - **배치 크기**: 8
 
 ## 결론
-이번 실습에서는 자신만의 **텍스트 데이터**를 사용하여 **LLM Instruction-Tuning**을 수행하였습니다. 학습 과정에서 `train/loss`와 `eval/loss`를 기록하고, 이를 WandB를 통해 시각화하여 학습 성능을 모니터링할 수 있었습니다. 모델의 학습 성능은 전체적으로 개선되었으며, 일부 에폭에서 **overfitting**의 경향을 확인할 수 있었습니다.
+이번 실습에서는 자신만의 .json에 저장된 **텍스트 데이터**를 사용하여 **LLM Instruction-Tuning**을 수행하였습니다. 학습 과정에서 `train/loss`와 `eval/loss`를 기록하고, 이를 WandB를 통해 시각화하여 학습 성능을 모니터링할 수 있었습니다. 모델의 학습 성능은 전체적으로 개선되었으며, Eval 일부 에폭에서 **overfitting**의 경향을 확인할 수 있었습니다.
 
 ## WandB 로그
 
