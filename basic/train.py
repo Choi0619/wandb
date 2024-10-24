@@ -1,14 +1,14 @@
 import os
 import torch
-from dotenv import load_dotenv
+import wandb
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import Dataset
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
 from sklearn.model_selection import train_test_split
 
-# .env 파일에서 환경 변수 로드
-load_dotenv()
+# Wandb 프로젝트 초기화
+wandb.init(project='LLM_instruction_tuning', name='chatbot-finetuning')  # 프로젝트 및 실행 이름 설정
 
 # GPT-2 모델과 토크나이저 불러오기
 print("GPT-2 모델과 토크나이저를 로드하는 중입니다...")
@@ -78,22 +78,35 @@ trainer = SFTTrainer(
         output_dir="./results",
         evaluation_strategy="steps",
         eval_steps=100,
-        per_device_train_batch_size=1,  # 배치 크기를 줄임
-        per_device_eval_batch_size=1,   # 평가 배치 크기도 줄임
-        num_train_epochs=3,
+        per_device_train_batch_size=4,  # 배치 크기를 늘림
+        per_device_eval_batch_size=4,    # 평가 배치 크기도 늘림
+        num_train_epochs=5,               # 에폭 수를 늘림
         logging_steps=10,
-        gradient_accumulation_steps=4,  # Gradient Accumulation 적용
-        fp16=True,  # Mixed Precision 사용
+        gradient_accumulation_steps=4,    # Gradient Accumulation 적용
+        fp16=True,                         # Mixed Precision 사용
     ),
     data_collator=collator,
 )
 
 # 학습 시작
 print("SFT Trainer 설정 성공. 학습을 시작합니다.")
-trainer.train()
+train_result = trainer.train()
 
 # 모델 저장
 trainer.save_model("./trained_model")
+
+# 학습 및 평가 결과 로깅
+metrics = train_result.metrics
+trainer.log_metrics("train", metrics)
+trainer.save_metrics("train", metrics)
+
+# 평가 데이터셋으로 평가 실행
+eval_metrics = trainer.evaluate()
+trainer.log_metrics("eval", eval_metrics)
+trainer.save_metrics("eval", eval_metrics)
+
+# Wandb 로그 종료
+wandb.finish()
 
 # GPU 캐시 정리
 torch.cuda.empty_cache()
