@@ -33,8 +33,9 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
 
 # Preprocessing function
 def preprocess_function(examples):
-    inputs = [ex['input'] for ex in examples]
-    outputs = [ex['output'] for ex in examples]
+    inputs = examples['input']  # Access the input and output fields directly
+    outputs = examples['output']
+    
     model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
 
     labels = tokenizer(outputs, max_length=512, truncation=True, padding="max_length").input_ids
