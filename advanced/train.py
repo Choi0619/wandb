@@ -44,32 +44,30 @@ def preprocess_function(examples):
     with tokenizer.as_target_tokenizer():
         labels = tokenizer(outputs, max_length=256, truncation=True, padding="max_length").input_ids
 
-    # <pad> 토큰 제거
-    labels = [(label if label != tokenizer.pad_token_id else -100) for label in labels]
-    model_inputs["labels"] = labels  # 라벨 추가
-    
+    # <pad> 토큰 제거 (손실 함수에서 무시하도록 처리)
+    model_inputs["labels"] = [[(label if label != tokenizer.pad_token_id else -100) for label in labels] for labels in labels]
+
     return model_inputs
 
 # 전처리 적용
 train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
-# 응답 템플릿과 데이터 콜레이터 정의
-response_template = " ### Answer:"
-collator = DataCollatorForCompletionOnlyLM(response_template=response_template, tokenizer=tokenizer)
+# 데이터 콜레이터 정의 (응답 템플릿 제거)
+collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
 
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
     output_dir="./results",
-    evaluation_strategy="steps",  # evaluate at specific steps instead of epochs
-    eval_steps=500,  # evaluate every 500 steps
-    logging_strategy="steps",  # log after every specific number of steps
-    logging_steps=100,  # log every 100 steps
-    save_total_limit=1,  # keep only 1 checkpoint
-    per_device_train_batch_size=1,  # 배치 크기 줄이기
-    per_device_eval_batch_size=1,    # 배치 크기 줄이기
-    num_train_epochs=5,  # epoch 수
-    fp16=False  # FP16을 비활성화하여 안정성 확보
+    evaluation_strategy="epoch",
+    logging_strategy="steps",  # steps 단위로 로그 남기기
+    logging_steps=100,  # 100 스텝마다 로깅
+    eval_steps=500,  # 500 스텝마다 평가
+    per_device_train_batch_size=8,  # 배치 크기 설정
+    per_device_eval_batch_size=8,
+    num_train_epochs=3,  # 에폭 수 3으로 설정
+    save_total_limit=1,
+    fp16=False  # FP16 비활성화
 )
 
 trainer = SFTTrainer(
