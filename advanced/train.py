@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
-from trl import SFTConfig, SFTTrainer
+from trl import SFTConfig, SFTTrainer, TrainerCallback
 import wandb
 
 # WandB 초기화
@@ -65,29 +65,31 @@ sft_config = SFTConfig(
     run_name="therapist-fine-tuning-run"  # WandB run name 설정
 )
 
+# **콜백을 추가하여 매 스텝마다 loss 기록**
+class LogTrainLossCallback(TrainerCallback):
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.log_history:
+            last_log = state.log_history[-1]
+            if 'loss' in last_log:
+                wandb.log({'train/loss': last_log['loss'], 'train/global_step': state.global_step})
+
 trainer = SFTTrainer(
     model=model,
     train_dataset=train_dataset,
     eval_dataset=val_dataset,
     args=sft_config,
     data_collator=collator,
+    callbacks=[LogTrainLossCallback()]  # 콜백 추가
 )
 
 # 학습 시작
 train_result = trainer.train()
 
-# **여기서 각 스텝마다 train_loss를 WandB에 기록하는 부분을 추가합니다.**
-# WandB에 train 결과 먼저 로깅
-trainer.state.log_history  # 손실 기록을 로그에서 가져옴
-for log in trainer.state.log_history:
-    if "loss" in log:
-        wandb.log({"train_loss": log["loss"], "step": log["step"]})
-
 # 평가 데이터셋으로 평가 실행
 eval_metrics = trainer.evaluate()
 
 # WandB에 eval 결과 로깅
-wandb.log({"eval_loss": eval_metrics.get('eval_loss', 0), "epoch": eval_metrics['epoch']})
+wandb.log({"eval/loss": eval_metrics.get('eval_loss', 0), "eval/epoch": eval_metrics['epoch']})
 
 # 모델 저장
 trainer.save_model("./fine_tuned_therapist_chatbot")
@@ -105,4 +107,3 @@ trainer.save_metrics("eval", eval_metrics)
 
 # WandB 로깅 종료
 wandb.finish()
-
