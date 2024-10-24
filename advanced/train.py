@@ -73,13 +73,20 @@ trainer = SFTTrainer(
     model=model,
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,  # 평가 데이터 추가
-    args=SFTConfig(output_dir=args.output_dir, num_train_epochs=3, per_device_train_batch_size=2),
+    args=SFTConfig(output_dir=args.output_dir, num_train_epochs=3, per_device_train_batch_size=2, logging_steps=100, evaluation_strategy="steps", eval_steps=100),
     formatting_func=formatting_prompts_func,
     data_collator=collator,
 )
 
 # 학습 실행
-trainer.train()
+train_result = trainer.train()
+
+# 학습 결과 Wandb에 기록
+wandb.log({"train_loss": train_result.training_loss})
+
+# 평가 실행
+eval_result = trainer.evaluate()
+wandb.log({"eval_loss": eval_result['eval_loss']})
 
 # Wandb 학습 종료
 wandb.finish()
