@@ -26,6 +26,9 @@ print("Gemma 2B 모델과 토크나이저가 성공적으로 로드되었습니�
 # GPU 캐시 정리
 torch.cuda.empty_cache()
 
+# Gradient checkpointing을 활성화하여 메모리 절약
+model.gradient_checkpointing_enable()
+
 # 데이터 로드
 with open("corpus.json", "r", encoding="utf-8") as f:
     corpus = json.load(f)
@@ -95,3 +98,6 @@ trainer.train()
 
 # 모델 저장
 trainer.save_model("./trained_model")
+
+# GPU 캐시 정리
+torch.cuda.empty_cache()
