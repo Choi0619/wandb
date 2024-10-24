@@ -63,8 +63,10 @@ print(f"Dataset 예시: {train_dataset[0]}")
 # Data formatting
 def formatting_prompts_func(example):
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
+    inputs = tokenizer(text, padding="max_length", max_length=512, truncation=True, return_tensors="pt")  # return_tensors="pt"로 텐서 반환
     return {
-        "input_ids": tokenizer(text, padding="max_length", max_length=512, truncation=True)["input_ids"]
+        "input_ids": inputs["input_ids"].to(model.device),  # input_ids를 GPU로 이동
+        "attention_mask": inputs["attention_mask"].to(model.device)  # attention_mask를 GPU로 이동
     }
 
 # 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
