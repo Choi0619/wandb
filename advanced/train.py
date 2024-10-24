@@ -2,8 +2,8 @@ import json
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
+from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
+from trl import SFTConfig, SFTTrainer
 import wandb
 
 # WandB 초기화
@@ -47,8 +47,8 @@ def preprocess_function(examples):
 train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
-# 템플릿 제거하고 콜레이터 정의
-collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
+# DataCollatorWithPadding 사용
+collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
