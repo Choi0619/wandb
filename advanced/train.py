@@ -72,13 +72,6 @@ trainer = SFTTrainer(
     data_collator=collator,
 )
 
-# 학습 중 스텝마다 train_loss를 WandB에 기록
-def compute_metrics(eval_pred):
-    wandb.log({"train/loss": trainer.state.log_history[-1]['loss']})  # 최근 스텝의 손실 값을 기록
-    return eval_pred
-
-trainer.add_callback(compute_metrics)
-
 # 학습 시작
 train_result = trainer.train()
 
