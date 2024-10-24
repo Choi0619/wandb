@@ -72,17 +72,25 @@ trainer = SFTTrainer(
     data_collator=collator,
 )
 
+# 학습 중 스텝마다 train_loss를 WandB에 기록
+def log_train_loss(logs):
+    if 'loss' in logs:
+        wandb.log({"train/loss": logs['loss']})  # 학습 손실 기록
+
+trainer.add_callback(log_train_loss)
+
 # 학습 시작
 train_result = trainer.train()
 
-# 모델 저장
-trainer.save_model("./fine_tuned_therapist_chatbot")
-
-# 평가 데이터셋으로 평가 실행
+# 학습 완료 후 평가 실행
 eval_metrics = trainer.evaluate()
 
-# WandB에 eval 결과 로깅
-wandb.log({"eval/loss": eval_metrics.get('eval_loss', 0), "eval/epoch": eval_metrics['epoch']})
+# WandB에 train과 eval 결과 로깅 (train을 먼저 기록한 후 eval 기록)
+wandb.log({"train/loss": train_result.metrics['train_loss'], "train/epoch": train_result.metrics['epoch']})
+wandb.log({"eval/loss": eval_metrics['eval_loss'], "eval/epoch": eval_metrics['epoch']})
+
+# 모델 저장
+trainer.save_model("./fine_tuned_therapist_chatbot")
 
 # 학습 중 로그 히스토리 확인
 import pandas as pd
