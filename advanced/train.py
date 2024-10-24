@@ -55,9 +55,9 @@ train_test_split = dataset.train_test_split(test_size=0.2)
 train_dataset = train_test_split["train"]
 eval_dataset = train_test_split["test"]
 
-# 데이터 포맷팅 함수 정의
+# 데이터 포맷팅 함수 정의 (리스트 반환)
 def formatting_prompts_func(example):
-    return f"### Question: {example['instruction']}\n ### Answer: {example['output']}"
+    return [f"### Question: {example['instruction']}\n ### Answer: {example['output']}"]
 
 # Data Collator 정의 (SFT용)
 response_template = " ### Answer:"
