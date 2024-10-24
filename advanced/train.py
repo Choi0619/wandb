@@ -72,13 +72,15 @@ trainer = SFTTrainer(
     data_collator=collator,
 )
 
+# 학습 중 스텝마다 train_loss를 WandB에 기록
+def compute_metrics(eval_pred):
+    wandb.log({"train/loss": trainer.state.log_history[-1]['loss']})  # 최근 스텝의 손실 값을 기록
+    return eval_pred
+
+trainer.add_callback(compute_metrics)
+
 # 학습 시작
 train_result = trainer.train()
-
-# WandB에 매 스텝마다 train_loss를 기록
-for log in trainer.state.log_history:
-    if 'loss' in log:
-        wandb.log({"train/loss": log['loss'], "train/global_step": log['step']})
 
 # 모델 저장
 trainer.save_model("./fine_tuned_therapist_chatbot")
