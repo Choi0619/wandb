@@ -2,7 +2,7 @@ import json
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
+from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding, TrainerCallback
 from trl import SFTConfig, SFTTrainer
 import wandb
 
@@ -50,10 +50,16 @@ val_dataset = val_dataset.map(preprocess_function, batched=True)
 # DataCollatorWithPadding 사용
 collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
+# 콜백 클래스 정의 (손실을 WandB에 기록하는 역할)
+class LogTrainLossCallback(TrainerCallback):
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if 'loss' in logs:
+            wandb.log({"train/loss": logs['loss'], "step": state.global_step})
+
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
     output_dir="./results",
-    evaluation_strategy="epoch",  # 매 epoch마다 평가
+    eval_strategy="epoch",  # 매 epoch마다 평가
     logging_strategy="steps",  # steps 단위로 로그 남기기
     logging_steps=100,  # 100 스텝마다 로깅
     eval_steps=500,  # 500 스텝마다 평가
@@ -61,7 +67,8 @@ sft_config = SFTConfig(
     per_device_eval_batch_size=8,
     num_train_epochs=3,  # 에폭 수 3으로 설정
     save_total_limit=1,
-    fp16=False  # FP16 비활성화
+    fp16=False,  # FP16 비활성화
+    run_name="therapist-fine-tuning-run"  # WandB run name 설정
 )
 
 trainer = SFTTrainer(
@@ -70,27 +77,20 @@ trainer = SFTTrainer(
     eval_dataset=val_dataset,
     args=sft_config,
     data_collator=collator,
+    callbacks=[LogTrainLossCallback()]  # 콜백 추가
 )
-
-# 학습 중 스텝마다 train_loss를 WandB에 기록
-def log_train_loss(logs):
-    if 'loss' in logs:
-        wandb.log({"train/loss": logs['loss']})  # 학습 손실 기록
-
-trainer.add_callback(log_train_loss)
 
 # 학습 시작
 train_result = trainer.train()
 
-# 학습 완료 후 평가 실행
-eval_metrics = trainer.evaluate()
-
-# WandB에 train과 eval 결과 로깅 (train을 먼저 기록한 후 eval 기록)
-wandb.log({"train/loss": train_result.metrics['train_loss'], "train/epoch": train_result.metrics['epoch']})
-wandb.log({"eval/loss": eval_metrics['eval_loss'], "eval/epoch": eval_metrics['epoch']})
-
 # 모델 저장
 trainer.save_model("./fine_tuned_therapist_chatbot")
+
+# 평가 데이터셋으로 평가 실행
+eval_metrics = trainer.evaluate()
+
+# WandB에 eval 결과 로깅
+wandb.log({"eval/loss": eval_metrics.get('eval_loss', 0), "eval/epoch": eval_metrics['epoch']})
 
 # 학습 중 로그 히스토리 확인
 import pandas as pd
