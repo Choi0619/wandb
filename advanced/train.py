@@ -31,14 +31,24 @@ model_name = "facebook/opt-350m"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name)
 
-# 데이터 전처리
+# 데이터 전처리 함수 수정
 def preprocess_function(examples):
-    inputs = [f"### User: {item['content']}\n" for item in examples["role"] if item == "user"]
-    responses = [f"### Therapist: {item['content']}\n" for item in examples["role"] if item == "therapist"]
+    inputs = []
+    responses = []
+    for i in range(0, len(examples['role']), 2):
+        # role이 "user"일 때만 input에 추가
+        if examples['role'][i] == "user":
+            user_content = f"### User: {examples['content'][i]}\n"
+            therapist_content = f"### Therapist: {examples['content'][i+1]}\n" if (i+1) < len(examples['content']) else ""
+            inputs.append(user_content)
+            responses.append(therapist_content)
+    
     model_inputs = tokenizer(inputs, padding="max_length", truncation=True)
-    model_inputs["labels"] = tokenizer(responses, padding="max_length", truncation=True)["input_ids"]
+    labels = tokenizer(responses, padding="max_length", truncation=True)["input_ids"]
+    model_inputs["labels"] = labels
     return model_inputs
 
+# train/validation 데이터 전처리
 train_data = train_data.map(preprocess_function, batched=True)
 val_data = val_data.map(preprocess_function, batched=True)
 
