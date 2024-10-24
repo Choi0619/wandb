@@ -15,7 +15,7 @@ tokenizer = AutoTokenizer.from_pretrained("gpt2")
 model = AutoModelForCausalLM.from_pretrained("gpt2")
 
 # Test prompt
-prompt = "Explain about dogs."
+prompt = "Explain about cat."
 
 # Tokenize input
 inputs = tokenizer(prompt, return_tensors="pt")
