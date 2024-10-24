@@ -21,8 +21,8 @@ model_name = "google/gemma-2b"
 
 # 토크나이저와 모델 불러오기
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
-model.gradient_checkpointing_enable()  # 메모리 절약을 위한 gradient checkpointing 활성화
+model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", low_cpu_mem_usage=True)
+model.gradient_checkpointing_enable()  # gradient checkpointing 활성화
 
 # 모델을 GPU로 이동
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -32,10 +32,10 @@ model.to(device)
 with open('corpus.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 
-# 데이터셋 준비 (user가 질문하면 therapist가 답변하는 구조)
+# 데이터셋 준비 (user가 질문하고 therapist가 답변하는 구조)
 def preprocess_data(data):
     instructions, outputs = [], []
-    for i in range(0, len(data), 2):  # user와 therapist가 번갈아 나오는 구조로 가정
+    for i in range(0, len(data), 2):  # user와 therapist가 번갈아 나오는 구조
         if data[i]['role'] == 'user' and data[i+1]['role'] == 'therapist':
             instructions.append(data[i]['content'])  # user 질문은 입력으로
             outputs.append(data[i+1]['content'])     # therapist 답변은 출력으로
@@ -54,9 +54,9 @@ train_test_split = dataset.train_test_split(test_size=0.2)
 train_dataset = train_test_split["train"]
 eval_dataset = train_test_split["test"]
 
-# 데이터 포맷팅 함수 정의 (리스트 반환)
+# 데이터 포맷팅 함수 정의
 def formatting_prompts_func(example):
-    return [f"### Question: {example['instruction']}\n ### Answer: {example['output']}"]
+    return f"### Question: {example['instruction']}\n ### Answer: {example['output']}"
 
 # Data Collator 정의
 response_template = " ### Answer:"
@@ -66,14 +66,14 @@ collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenize
 config = SFTConfig(
     output_dir="./results",
     num_train_epochs=5,
-    per_device_train_batch_size=1,  # 배치 크기를 작게 설정해 메모리 절약
-    max_seq_length=512,
-    gradient_accumulation_steps=8,  # 그라디언트 누적 사용
+    per_device_train_batch_size=1,  # 배치 크기 축소
+    max_seq_length=256,  # 메모리 절약을 위한 시퀀스 길이 축소
+    gradient_accumulation_steps=8,  # 그라디언트 누적
     logging_steps=50,
     evaluation_strategy="steps",
     eval_steps=50,
     save_steps=100,
-    fp16=True,  # 혼합 정밀도 사용으로 메모리 절약
+    fp16=True,  # 혼합 정밀도
 )
 
 # SFTTrainer 설정
@@ -100,5 +100,5 @@ response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 print("모델 응답:", response)
 
-# 메모리 캐시 비우기 (필요시 사용)
+# 메모리 캐시 비우기
 torch.cuda.empty_cache()
