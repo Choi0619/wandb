@@ -5,6 +5,12 @@ import logging
 from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
+import argparse
+
+# 명령어 인자 설정
+parser = argparse.ArgumentParser(description="Fine-tuning GPT-2 model")
+parser.add_argument('--output_dir', type=str, required=True, help='Model output directory')
+args = parser.parse_args()
 
 # Wandb 프로젝트 초기화
 wandb.init(project='LLM_instruction_tuning')
@@ -62,7 +68,7 @@ trainer = SFTTrainer(
     model=model,
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,  # 평가 데이터 추가
-    args=SFTConfig(output_dir="./output", num_train_epochs=3, per_device_train_batch_size=2),
+    args=SFTConfig(output_dir=args.output_dir, num_train_epochs=3, per_device_train_batch_size=2),
     formatting_func=formatting_prompts_func,
     data_collator=collator,
 )
