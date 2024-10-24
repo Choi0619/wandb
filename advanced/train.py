@@ -1,104 +1,109 @@
 import os
-from dotenv import load_dotenv
-from huggingface_hub import login
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import torch
 import json
-from datasets import Dataset
+from transformers import GPTNeoForCausalLM, GPT2Tokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
+from datasets import Dataset, load_metric
 
-# .env 파일에서 환경 변수 불러오기
+# Load Hugging Face API token from environment variables
+from dotenv import load_dotenv
+from huggingface_hub import login
+
+# Load .env file
 load_dotenv()
-
-# Hugging Face API 토큰 불러오기
 hf_token = os.getenv('HF_TOKEN')
 
-# Hugging Face에 로그인
+# Hugging Face login using token
 login(hf_token)
 
-# 사용할 모델 이름 정의
-model_name = "google/gemma-2b"
+# Load the tokenizer and model
+model_name = "EleutherAI/gpt-neo-1.3B"
+tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+model = GPTNeoForCausalLM.from_pretrained(model_name)
 
-# 토크나이저와 모델 불러오기
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", low_cpu_mem_usage=True)
-model.gradient_checkpointing_enable()  # gradient checkpointing 활성화
+# Ensure padding tokens are set
+if tokenizer.pad_token is None:
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+model.resize_token_embeddings(len(tokenizer))
 
-# 모델을 GPU로 이동
+# Move model to GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-# corpus.json 파일에서 데이터 로드
+# Load dataset (corpus.json)
 with open('corpus.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 
-# 데이터셋 준비 (user가 질문하고 therapist가 답변하는 구조)
+# Prepare dataset
 def preprocess_data(data):
     instructions, outputs = [], []
-    for i in range(0, len(data), 2):  # user와 therapist가 번갈아 나오는 구조
+    for i in range(0, len(data), 2):
         if data[i]['role'] == 'user' and data[i+1]['role'] == 'therapist':
-            instructions.append(data[i]['content'])  # user 질문은 입력으로
-            outputs.append(data[i+1]['content'])     # therapist 답변은 출력으로
+            instructions.append(data[i]['content'])
+            outputs.append(data[i+1]['content'])
     return instructions, outputs
 
 instructions, outputs = preprocess_data(data)
 
-# HuggingFace Dataset 형식으로 변환
+# Convert to HuggingFace Dataset format
 dataset = Dataset.from_dict({
     "instruction": instructions,
     "output": outputs
 })
 
-# Train, Validation 데이터셋 나누기 (8:2 비율)
+# Split data into training and evaluation sets (80/20 split)
 train_test_split = dataset.train_test_split(test_size=0.2)
 train_dataset = train_test_split["train"]
 eval_dataset = train_test_split["test"]
 
-# 데이터 포맷팅 함수 정의
-def formatting_prompts_func(example):
-    return f"### Question: {example['instruction']}\n ### Answer: {example['output']}"
+# Tokenize the dataset
+def tokenize_function(examples):
+    inputs = tokenizer(examples['instruction'], padding="max_length", truncation=True, max_length=512)
+    outputs = tokenizer(examples['output'], padding="max_length", truncation=True, max_length=512)
+    inputs["labels"] = outputs["input_ids"]
+    return inputs
 
-# Data Collator 정의
-response_template = " ### Answer:"
-collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+# Apply tokenization to datasets
+tokenized_train_dataset = train_dataset.map(tokenize_function, batched=True)
+tokenized_eval_dataset = eval_dataset.map(tokenize_function, batched=True)
 
-# Fine-tuning 설정
-config = SFTConfig(
+# Training arguments
+training_args = TrainingArguments(
     output_dir="./results",
-    num_train_epochs=5,
-    per_device_train_batch_size=1,  # 배치 크기 축소
-    max_seq_length=256,  # 메모리 절약을 위한 시퀀스 길이 축소
-    gradient_accumulation_steps=8,  # 그라디언트 누적
-    logging_steps=50,
+    per_device_train_batch_size=2,  # Reduce batch size if memory issues occur
+    per_device_eval_batch_size=2,
+    num_train_epochs=3,
     evaluation_strategy="steps",
-    eval_steps=50,
+    eval_steps=100,
+    logging_steps=100,
     save_steps=100,
-    fp16=True,  # 혼합 정밀도
+    save_total_limit=2,
+    fp16=True if torch.cuda.is_available() else False,  # Mixed precision training to reduce memory usage
+    gradient_accumulation_steps=2,  # Accumulate gradients over multiple steps
+    load_best_model_at_end=True,
+    report_to=None  # Disable reporting to WandB for now
 )
 
-# SFTTrainer 설정
-trainer = SFTTrainer(
+# Data collator for causal language modeling
+data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+# Initialize the trainer
+trainer = Trainer(
     model=model,
-    train_dataset=train_dataset,
-    eval_dataset=eval_dataset,
-    args=config,
-    formatting_func=formatting_prompts_func,
-    data_collator=collator,
+    args=training_args,
+    train_dataset=tokenized_train_dataset,
+    eval_dataset=tokenized_eval_dataset,
+    data_collator=data_collator,
+    tokenizer=tokenizer,
 )
 
-# 학습 실행
+# Fine-tune the model
 trainer.train()
 
-# 모델 저장
+# Save the model
 trainer.save_model("./fine_tuned_model")
 
-# 테스트: 샘플 프롬프트로 모델 결과 확인
-test_prompt = "너무 무기력한데 어떻게 해야할지 모르겠어."
-inputs = tokenizer(test_prompt, return_tensors="pt").to(device)
-outputs = model.generate(**inputs, max_new_tokens=50, temperature=0.7)
-response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-print("모델 응답:", response)
-
-# 메모리 캐시 비우기
-torch.cuda.empty_cache()
+# Sample prompt for generation
+sample_prompt = "너무 무기력한데 어떻게 해야할지 모르겠어."
+input_ids = tokenizer(sample_prompt, return_tensors="pt").input_ids.to(device)
+output = model.generate(input_ids, max_length=150)
+print("Generated response:", tokenizer.decode(output[0], skip_special_tokens=True))
