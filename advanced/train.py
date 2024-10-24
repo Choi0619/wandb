@@ -55,7 +55,7 @@ sft_config = SFTConfig(
     output_dir="./results",
     evaluation_strategy="epoch",  # 매 epoch마다 평가
     logging_strategy="steps",  # steps 단위로 로그 남기기
-    logging_steps=100,  # 100 스텝마다 로깅
+    logging_steps=50,  # 더 자주 로깅하기 위해 50 스텝마다 로깅
     eval_steps=500,  # 500 스텝마다 평가
     per_device_train_batch_size=8,  # 배치 크기 설정
     per_device_eval_batch_size=8,
@@ -87,6 +87,11 @@ eval_metrics = trainer.evaluate()
 
 # WandB에 eval 결과 로깅
 wandb.log({"eval/loss": eval_metrics.get('eval_loss', 0), "eval/epoch": eval_metrics['epoch']})
+
+# 학습 중 로그 히스토리 확인
+import pandas as pd
+df = pd.DataFrame(trainer.state.log_history)
+print(df)  # 로그 기록 출력 (손실 값이 기록되었는지 확인)
 
 # 학습 및 평가 결과 로깅
 trainer.log_metrics("train", train_metrics)
