@@ -63,7 +63,9 @@ print(f"Dataset 예시: {train_dataset[0]}")
 # Data formatting
 def formatting_prompts_func(example):
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    return {"input_ids": tokenizer(text, padding="max_length", max_length=512, truncation=True)["input_ids"]}
+    return {
+        "input_ids": tokenizer(text, padding="max_length", max_length=512, truncation=True)["input_ids"]
+    }
 
 # 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
 response_template = " ### Answer:"
