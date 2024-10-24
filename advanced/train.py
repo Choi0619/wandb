@@ -34,27 +34,21 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
 
 # 전처리 함수 정의
 def preprocess_function(examples):
-    inputs = examples['input']  # 사용자 입력
-    outputs = examples['output']  # 치료사 응답
+    inputs = tokenizer(examples['input'], max_length=256, truncation=True, padding="max_length")
+    labels = tokenizer(text_target=examples['output'], max_length=256, truncation=True, padding="max_length").input_ids
     
-    # 토크나이저를 사용하여 입력과 출력 토큰화
-    model_inputs = tokenizer(inputs, max_length=256, truncation=True, padding="max_length")
-
-    # 라벨: 치료사 응답만 토크나이즈하여 라벨로 사용 (text_target을 통해)
-    labels = tokenizer(text_target=outputs, max_length=256, truncation=True, padding="max_length").input_ids
-
-    # <pad> 토큰 제거 (손실 함수에서 무시하도록 처리)
-    model_inputs["labels"] = [[(label if label != tokenizer.pad_token_id else -100) for label in labels] for labels in labels]
-
-    return model_inputs
+    # <pad> 토큰을 -100으로 설정하여 손실 계산에서 제외
+    labels = [[(label if label != tokenizer.pad_token_id else -100) for label in label_list] for label_list in labels]
+    
+    inputs["labels"] = labels
+    return inputs
 
 # 전처리 적용
 train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
-# 응답 템플릿 추가 (필수 인자)
-response_template = " ### Answer:"
-collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer, response_template=response_template)
+# 템플릿 제거하고 콜레이터 정의
+collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
 
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
@@ -86,13 +80,13 @@ trainer.save_model("./fine_tuned_therapist_chatbot")
 
 # WandB에 train 결과 로깅
 train_metrics = train_result.metrics
-wandb.log({"train/loss": train_metrics['loss'], "train/epoch": train_metrics['epoch']})
+wandb.log({"train/loss": train_metrics.get('loss', 0), "train/epoch": train_metrics['epoch']})
 
 # 평가 데이터셋으로 평가 실행
 eval_metrics = trainer.evaluate()
 
 # WandB에 eval 결과 로깅
-wandb.log({"eval/loss": eval_metrics['eval_loss'], "eval/epoch": eval_metrics['epoch']})
+wandb.log({"eval/loss": eval_metrics.get('eval_loss', 0), "eval/epoch": eval_metrics['epoch']})
 
 # 학습 및 평가 결과 로깅
 trainer.log_metrics("train", train_metrics)
