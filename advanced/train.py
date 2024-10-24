@@ -8,6 +8,15 @@ from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
 from sklearn.model_selection import train_test_split
 
+# 캐시 정리 및 메모리 상태 확인 함수 추가
+def clear_gpu_memory():
+    print("GPU 캐시를 정리하고 메모리 상태를 확인합니다...")
+    torch.cuda.empty_cache()
+    torch.cuda.memory_summary(device=None, abbreviated=False)
+
+# GPU 캐시 정리 및 메모리 상태 확인
+clear_gpu_memory()
+
 # .env 파일에서 환경 변수 로드
 load_dotenv()
 
@@ -23,7 +32,7 @@ tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
 model = AutoModelForCausalLM.from_pretrained("google/gemma-2b", device_map="auto")
 print("Gemma 2B 모델과 토크나이저가 성공적으로 로드되었습니다.")
 
-# GPU 캐시 정리
+# GPU 캐시 다시 정리
 torch.cuda.empty_cache()
 
 # Gradient checkpointing을 활성화하여 메모리 절약
@@ -99,5 +108,5 @@ trainer.train()
 # 모델 저장
 trainer.save_model("./trained_model")
 
-# GPU 캐시 정리
-torch.cuda.empty_cache()
+# 학습 후 GPU 캐시 다시 정리
+clear_gpu_memory()
