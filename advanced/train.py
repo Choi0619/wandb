@@ -37,8 +37,8 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
 
 # 전처리 함수 정의
 def preprocess_function(examples):
-    inputs = tokenizer(examples['input'], max_length=256, truncation=True, padding="max_length")
-    labels = tokenizer(text_target=examples['output'], max_length=256, truncation=True, padding="max_length").input_ids
+    inputs = tokenizer(examples['input'], max_length=256, truncation=True, padding="max_length", return_tensors="pt")  # 텐서로 변환
+    labels = tokenizer(text_target=examples['output'], max_length=256, truncation=True, padding="max_length", return_tensors="pt").input_ids
     
     # <pad> 토큰을 -100으로 설정하여 손실 계산에서 제외
     labels = [[(label if label != tokenizer.pad_token_id else -100) for label in label_list] for label_list in labels]
