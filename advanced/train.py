@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
 from huggingface_hub import login
-from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import torch
 import json
 from datasets import Dataset
@@ -9,7 +10,7 @@ from datasets import Dataset
 # .env 파일에서 환경 변수 불러오기
 load_dotenv()
 
-# .env 파일에서 Hugging Face API 토큰 가져오기
+# Hugging Face API 토큰 불러오기
 hf_token = os.getenv('HF_TOKEN')
 
 # Hugging Face에 로그인
@@ -30,10 +31,10 @@ model.to(device)
 with open('corpus.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 
-# 데이터셋 준비 (preprocessing)
+# 데이터셋 준비
 def preprocess_data(data):
     instructions, outputs = [], []
-    for i in range(0, len(data), 2):  # 대화가 user와 therapist가 번갈아 나오는 것으로 가정
+    for i in range(0, len(data), 2):  # user와 therapist가 번갈아 나오는 구조로 가정
         if data[i]['role'] == 'user' and data[i+1]['role'] == 'therapist':
             instructions.append(data[i]['content'])
             outputs.append(data[i+1]['content'])
@@ -52,49 +53,44 @@ train_test_split = dataset.train_test_split(test_size=0.2)
 train_dataset = train_test_split["train"]
 eval_dataset = train_test_split["test"]
 
-# Fine-tuning용 TrainingArguments 설정
-training_args = TrainingArguments(
+# 데이터 포맷팅 함수 정의
+def formatting_prompts_func(example):
+    return [f"### Question: {example['instruction']}\n ### Answer: {example['output']}"]
+
+# Data Collator 정의
+response_template = " ### Answer:"
+collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+
+# Fine-tuning 설정
+config = SFTConfig(
     output_dir="./results",
-    per_device_train_batch_size=2,
-    per_device_eval_batch_size=2,
-    num_train_epochs=5,  # 더 많은 epoch으로 설정
+    num_train_epochs=5,  # 학습 epoch
+    per_device_train_batch_size=4,  # 배치 크기 증가
+    logging_steps=50,  # 로깅 간격
     evaluation_strategy="steps",
-    eval_steps=100,
-    logging_steps=100,
-    save_steps=100,
+    eval_steps=50,  # 평가 간격
+    save_steps=100,  # 저장 간격
     save_total_limit=2,
-    remove_unused_columns=False,  # 컬럼 삭제를 하지 않도록 설정
-    report_to="none",  # wandb는 제거함
-    load_best_model_at_end=True
+    logging_dir="./logs",  # 로깅 디렉터리
 )
 
-# 데이터셋에서 instruction과 output을 input_ids로 변환하는 함수
-def tokenize_function(examples):
-    inputs = tokenizer(examples['instruction'], padding="max_length", truncation=True, max_length=512)
-    outputs = tokenizer(examples['output'], padding="max_length", truncation=True, max_length=512)
-    inputs["labels"] = outputs["input_ids"]  # labels에 output의 input_ids를 할당
-    return inputs
-
-# 데이터셋을 토크나이즈
-tokenized_train_dataset = train_dataset.map(tokenize_function, batched=True)
-tokenized_eval_dataset = eval_dataset.map(tokenize_function, batched=True)
-
-# Trainer 설정
-trainer = Trainer(
+# SFTTrainer 설정
+trainer = SFTTrainer(
     model=model,
-    args=training_args,
-    train_dataset=tokenized_train_dataset,
-    eval_dataset=tokenized_eval_dataset,
-    tokenizer=tokenizer
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
+    args=config,
+    formatting_func=formatting_prompts_func,
+    data_collator=collator,
 )
 
-# 모델 학습
+# 학습 시작
 trainer.train()
 
 # 모델 저장
 trainer.save_model("./fine_tuned_model")
 
-# 테스트: 하나의 샘플로 출력 확인
+# 테스트: 샘플 프롬프트로 모델 결과 확인
 test_prompt = "너무 무기력한데 어떻게 해야할지 모르겠어."
 inputs = tokenizer(test_prompt, return_tensors="pt").to(device)
 outputs = model.generate(**inputs, max_new_tokens=150)
