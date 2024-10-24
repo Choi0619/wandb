@@ -64,7 +64,7 @@ training_args = TrainingArguments(
     save_steps=100,
     save_total_limit=2,
     remove_unused_columns=False,  # 컬럼 삭제를 하지 않도록 설정
-    report_to="wandb",  # wandb를 사용해 로깅
+    report_to="none",  # wandb는 제거함
     load_best_model_at_end=True
 )
 
@@ -93,3 +93,11 @@ trainer.train()
 
 # 모델 저장
 trainer.save_model("./fine_tuned_model")
+
+# 테스트: 하나의 샘플로 출력 확인
+test_prompt = "너무 무기력한데 어떻게 해야할지 모르겠어."
+inputs = tokenizer(test_prompt, return_tensors="pt").to(device)
+outputs = model.generate(**inputs, max_new_tokens=150)
+response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+print("모델 응답:", response)
