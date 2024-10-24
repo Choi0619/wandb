@@ -68,13 +68,16 @@ def formatting_prompts_func(example):
 response_template = " ### Answer:"
 collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
+# output directory 설정
+output_dir = "./results"
+
 # SFT Trainer 설정
 trainer = SFTTrainer(
     model=model,
     train_dataset=train_dataset.map(formatting_prompts_func),
     eval_dataset=valid_dataset.map(formatting_prompts_func),
     args=SFTConfig(
-        output_dir="./results",
+        output_dir=output_dir,  # 여기서 output directory 설정
         evaluation_strategy="steps",
         eval_steps=100,
         per_device_train_batch_size=8,  # 배치 크기를 늘림
