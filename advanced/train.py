@@ -4,8 +4,8 @@ from datasets import Dataset
 import json
 from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 
-# 사용할 모델 정의 (GPT-Neo 125M)
-model_name = "EleutherAI/gpt-neo-125M"
+# 사용할 모델 정의 (GPT-Neo 1.3B)
+model_name = "EleutherAI/gpt-neo-1.3B"
 
 # 모델과 토크나이저 불러오기
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -50,17 +50,19 @@ def formatting_prompts_func(example):
 response_template = " ### Answer:"
 collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
-# SFTConfig 설정 (Reduce batch size and max sequence length to avoid OOM)
+# SFTConfig 설정 (memory optimization techniques)
 config = SFTConfig(
     output_dir="./results",
-    num_train_epochs=3,  # 적절히 늘릴 수 있음
-    per_device_train_batch_size=1,  # Reduce batch size
-    per_device_eval_batch_size=1,  # Reduce eval batch size
+    num_train_epochs=3,
+    per_device_train_batch_size=1,  # Keep batch size low to avoid OOM
+    per_device_eval_batch_size=1,
     logging_steps=100,
     evaluation_strategy="steps",
     eval_steps=100,
     save_steps=100,
-    max_seq_length=256,  # Reduce sequence length to save memory
+    max_seq_length=512,  # Reduce sequence length to save memory
+    gradient_accumulation_steps=4,  # Accumulate gradients over 4 steps
+    fp16=True,  # Enable mixed precision training (saves memory)
 )
 
 # SFTTrainer 설정
