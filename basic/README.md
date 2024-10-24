@@ -13,11 +13,11 @@
 ## 결과
 - **Train Loss**: 학습 진행 중 `train/loss` 값은 점진적으로 감소하는 양상을 보였습니다. 아래 첨부된 그래프에서 학습 손실이 꾸준히 줄어드는 모습을 확인할 수 있습니다.
   
-![Train Loss](file-MKoZdx0ojv6xw8NPTK5wm11z)
+![train loss](https://github.com/user-attachments/assets/9d2274b9-5100-4bb2-a8a6-40b4b67cdbe1)
 
 - **Eval Loss**: 검증 데이터에 대한 `eval/loss` 값 역시 에폭이 진행됨에 따라 점차 감소하였으며, 이는 모델이 과적합되지 않고 일반화된 성능을 보이고 있음을 나타냅니다.
   
-![Eval Loss](file-f0M6KBkoxJ7gKWYEYGPShjMS)
+![eval loss](https://github.com/user-attachments/assets/818996e8-9e8d-4350-84bb-ed1b27d66258)
 
 ## 사용한 도구 및 환경
 - **모델**: Facebook OPT-350M (AutoModelForCausalLM)
