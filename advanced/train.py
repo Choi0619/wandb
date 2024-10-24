@@ -1,7 +1,6 @@
 import os
 import torch
 from dotenv import load_dotenv
-from huggingface_hub import login
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import Dataset
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
@@ -11,15 +10,13 @@ from sklearn.model_selection import train_test_split
 # .env 파일에서 환경 변수 로드
 load_dotenv()
 
-# 환경 변수에서 HF_TOKEN 불러오기
-hf_token = os.getenv("HF_TOKEN")
-
-# Hugging Face 로그인
-login(hf_token)
-
 # GPT-2 모델과 토크나이저 불러오기
 print("GPT-2 모델과 토크나이저를 로드하는 중입니다...")
 tokenizer = AutoTokenizer.from_pretrained("gpt2")
+
+# pad_token 설정 (eos_token으로 설정)
+tokenizer.pad_token = tokenizer.eos_token
+
 model = AutoModelForCausalLM.from_pretrained("gpt2", device_map="auto")
 print("GPT-2 모델과 토크나이저가 성공적으로 로드되었습니다.")
 
