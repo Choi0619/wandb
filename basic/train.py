@@ -1,4 +1,3 @@
-import os
 import torch
 import wandb
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -17,14 +16,9 @@ tokenizer = AutoTokenizer.from_pretrained("gpt2")
 # pad_token 설정 (eos_token으로 설정)
 tokenizer.pad_token = tokenizer.eos_token
 
-model = AutoModelForCausalLM.from_pretrained("gpt2", device_map="auto")
+# 모델 로드
+model = AutoModelForCausalLM.from_pretrained("gpt2").to('cuda')  # 모델을 GPU로 이동
 print("GPT-2 모델과 토크나이저가 성공적으로 로드되었습니다.")
-
-# GPU 캐시 정리
-torch.cuda.empty_cache()
-
-# Gradient checkpointing 활성화 (메모리 절약)
-model.gradient_checkpointing_enable()
 
 # 데이터 로드
 with open("corpus.json", "r", encoding="utf-8") as f:
@@ -64,9 +58,11 @@ print(f"Dataset 예시: {train_dataset[0]}")
 def formatting_prompts_func(example):
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
     inputs = tokenizer(text, padding="max_length", max_length=512, truncation=True, return_tensors="pt")
+    
+    # GPU로 입력 텐서 이동
     return {
-        "input_ids": inputs["input_ids"].to(model.device),  # input_ids를 GPU로 이동
-        "attention_mask": inputs["attention_mask"].to(model.device)  # attention_mask를 GPU로 이동
+        "input_ids": inputs["input_ids"].to('cuda'),  # input_ids를 GPU로 이동
+        "attention_mask": inputs["attention_mask"].to('cuda')  # attention_mask를 GPU로 이동
     }
 
 # 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
@@ -112,6 +108,3 @@ trainer.save_metrics("eval", eval_metrics)
 
 # Wandb 로그 종료
 wandb.finish()
-
-# GPU 캐시 정리
-torch.cuda.empty_cache()
