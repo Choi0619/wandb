@@ -3,8 +3,9 @@ import json
 import wandb
 import torch
 from datasets import Dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling
+from sklearn.model_selection import train_test_split
+from trl import SFTTrainer
 
 # Wandb 초기화
 wandb.init(project='maum_shelter')
@@ -30,17 +31,21 @@ for i in range(len(corpus) - 1):
 # 데이터셋을 Hugging Face Datasets 포맷으로 변환
 dataset = Dataset.from_dict({"prompt": [d["prompt"] for d in data], "response": [d["response"] for d in data]})
 
-# Train/Validation split (Hugging Face의 train_test_split 사용)
-dataset = dataset.train_test_split(test_size=0.2, shuffle=True)
-train_dataset = dataset["train"]
-val_dataset = dataset["test"]
+# Train/Validation split
+train_data, val_data = train_test_split(dataset, test_size=0.2)
 
-# 데이터 Collator (Completion 전용)
-collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
+train_dataset = Dataset.from_dict({
+    "input_ids": tokenizer([d["prompt"] for d in train_data], padding=True, truncation=True)["input_ids"],
+    "labels": tokenizer([d["response"] for d in train_data], padding=True, truncation=True)["input_ids"],
+})
 
-# 텍스트 포맷 함수 정의 (프롬프트와 응답을 합침)
-def formatting_prompts_func(example):
-    return example['prompt'] + example['response']
+val_dataset = Dataset.from_dict({
+    "input_ids": tokenizer([d["prompt"] for d in val_data], padding=True, truncation=True)["input_ids"],
+    "labels": tokenizer([d["response"] for d in val_data], padding=True, truncation=True)["input_ids"],
+})
+
+# 데이터 Collator 설정 (기본적인 DataCollatorForLanguageModeling 사용)
+collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
 # Trainer 설정
 training_args = TrainingArguments(
@@ -64,7 +69,6 @@ trainer = SFTTrainer(
     eval_dataset=val_dataset,
     tokenizer=tokenizer,
     data_collator=collator,
-    formatting_func=formatting_prompts_func,
 )
 
 # 학습 수행
