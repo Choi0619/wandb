@@ -25,7 +25,7 @@ print("GPT-2 모델과 토크나이저가 성공적으로 로드되었습니다.
 # Gradient checkpointing 활성화 (메모리 절약)
 model.gradient_checkpointing_enable()
 
-# 데이터 로드
+# 데이터 로드 (로컬 파일로부터 JSON 데이터셋 로드)
 with open("corpus.json", "r", encoding="utf-8") as f:
     corpus = json.load(f)
 
