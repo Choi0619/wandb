@@ -5,7 +5,6 @@ import torch
 from datasets import Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-from sklearn.model_selection import train_test_split
 
 # Wandb 초기화
 wandb.init(project='maum_shelter')  # 프로젝트 이름 설정
@@ -31,8 +30,10 @@ for i in range(len(corpus) - 1):
 # 데이터셋을 Hugging Face Datasets 포맷으로 변환
 dataset = Dataset.from_dict({"prompt": [d["prompt"] for d in data], "response": [d["response"] for d in data]})
 
-# Train/Validation split (8:2 비율로 나누기)
-train_dataset, val_dataset = train_test_split(dataset, test_size=0.2, shuffle=True)
+# Train/Validation split (Hugging Face의 train_test_split 사용)
+dataset = dataset.train_test_split(test_size=0.2, shuffle=True)
+train_dataset = dataset["train"]
+val_dataset = dataset["test"]
 
 # 데이터 Collator (Completion 전용)
 collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
