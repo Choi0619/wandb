@@ -45,8 +45,15 @@ eval_dataset = train_test_split["test"]
 
 # 토크나이즈 함수 정의
 def tokenize_function(examples):
-    inputs = tokenizer(examples['instruction'], padding="max_length", truncation=True, max_length=512)
-    outputs = tokenizer(examples['output'], padding="max_length", truncation=True, max_length=512)
+    # 각 텍스트가 다차원이 아닌지 확인
+    inputs = [text if isinstance(text, str) else " ".join(text) for text in examples['instruction']]
+    outputs = [text if isinstance(text, str) else " ".join(text) for text in examples['output']]
+    
+    # 토큰화
+    inputs = tokenizer(inputs, padding="max_length", truncation=True, max_length=512)
+    outputs = tokenizer(outputs, padding="max_length", truncation=True, max_length=512)
+    
+    # 라벨을 output의 input_ids로 설정
     inputs["labels"] = outputs["input_ids"]
     return inputs
 
@@ -59,7 +66,7 @@ training_args = TrainingArguments(
     output_dir="./results",
     per_device_train_batch_size=2,
     per_device_eval_batch_size=2,
-    num_train_epochs=5,  # 에포크 수는 조절 가능
+    num_train_epochs=3,  # 에포크 수는 조절 가능
     logging_steps=100,
     evaluation_strategy="steps",
     eval_steps=100,
