@@ -2,8 +2,8 @@ import json
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
-from trl import SFTConfig, SFTTrainer, TrainerCallback
+from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding, TrainerCallback
+from trl import SFTConfig, SFTTrainer
 import wandb
 
 # WandB 초기화
