@@ -54,17 +54,18 @@ collator = DataCollatorWithPadding(tokenizer=tokenizer)
 class LogTrainLossCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
         if 'loss' in logs:
-            wandb.log({"train/loss": logs['loss'], "step": state.global_step})
+            wandb.log({"train/loss": logs['loss'], "epoch": state.epoch, "step": state.global_step})
 
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
     output_dir="./results",
-    evaluation_strategy="no",  # 학습이 완료된 후에 평가하도록 설정
+    eval_strategy="epoch",  # 매 epoch마다 평가
     logging_strategy="steps",  # steps 단위로 로그 남기기
     logging_steps=100,  # 100 스텝마다 로깅
+    eval_steps=500,  # 500 스텝마다 평가
     per_device_train_batch_size=8,  # 배치 크기 설정
     per_device_eval_batch_size=8,
-    num_train_epochs=3,  # 에폭 수 3으로 설정
+    num_train_epochs=10,  # 에폭 수 10으로 설정
     save_total_limit=1,
     fp16=False,  # FP16 비활성화
     run_name="therapist-fine-tuning-run"  # WandB run name 설정
@@ -85,7 +86,7 @@ train_result = trainer.train()
 # WandB에 train 결과 먼저 로깅
 wandb.log({"train/loss": train_result.metrics.get('train_loss', 0), "train/epoch": train_result.metrics['epoch']})
 
-# 평가 데이터셋으로 평가 실행 (학습 완료 후)
+# 평가 데이터셋으로 평가 실행
 eval_metrics = trainer.evaluate()
 
 # WandB에 eval 결과 로깅
