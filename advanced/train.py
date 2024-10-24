@@ -12,9 +12,8 @@ parser = argparse.ArgumentParser(description="Fine-tuning GPT-2 model")
 parser.add_argument('--output_dir', type=str, required=True, help='Model output directory')
 args = parser.parse_args()
 
-# Wandb 프로젝트 초기화
-wandb.init(project='LLM_instruction_tuning', name='gpt2-instruction-tuning', sync_tensorboard=True)
-logger = logging.getLogger(__name__)
+# Wandb 프로젝트 초기화 (sync_tensorboard는 설정 X)
+wandb.init(project='LLM_instruction_tuning', name='gpt2-instruction-tuning')
 
 # 로깅 설정
 logging.basicConfig(
@@ -88,17 +87,19 @@ trainer = SFTTrainer(
 # 학습 실행
 train_result = trainer.train()
 
-# 학습 결과 및 Wandb 로그
-trainer.log_metrics("train", train_result.metrics)  # train metrics
-wandb.log({"train_loss": train_result.training_loss})  # log train loss
-
-# 평가 실행
-eval_result = trainer.evaluate()
-wandb.log({"eval_loss": eval_result['eval_loss']})  # log eval loss
-trainer.log_metrics("eval", eval_result)  # eval metrics
+# 학습 중간 및 최종 결과 Wandb에 기록 (매 스텝마다 기록)
+for log in trainer.state.log_history:
+    if 'loss' in log:
+        wandb.log({"train_loss": log['loss']})
+    if 'eval_loss' in log:
+        wandb.log({"eval_loss": log['eval_loss']})
 
 # 모델 저장
 trainer.save_model(args.output_dir)
+
+# 평가 실행 및 결과 로그
+eval_result = trainer.evaluate()
+wandb.log({"eval_loss": eval_result['eval_loss']})  # log eval loss
 
 # Wandb 학습 종료
 wandb.finish()
