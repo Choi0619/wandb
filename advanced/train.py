@@ -27,7 +27,12 @@ logger = logging.getLogger(__name__)
 # GPT-2 모델과 토크나이저 로드
 model_name = "gpt2"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+# Add padding token for GPT-2
+if tokenizer.pad_token is None:
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 model = AutoModelForCausalLM.from_pretrained(model_name)
+model.resize_token_embeddings(len(tokenizer))  # resize the token embeddings to include pad_token
 
 # 데이터 로드 (corpus.json 파일에서 직접 로드)
 with open('corpus.json', 'r', encoding='utf-8') as f:
