@@ -82,7 +82,7 @@ class WandbCallback(TrainerCallback):
 
     def on_epoch_end(self, args, state, control, **kwargs):
         # 에폭 종료 시 손실 값을 WandB에 기록
-        if "loss" in state.log_history[-1]:
+        if len(state.log_history) > 0 and "loss" in state.log_history[-1]:
             logs = {"train/loss": state.log_history[-1]["loss"], "train/epoch": state.epoch}
             wandb.log(logs)
 
