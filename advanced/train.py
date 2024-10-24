@@ -34,15 +34,14 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
 
 # 전처리 함수 정의
 def preprocess_function(examples):
-    inputs = examples['input']  # 사용자 입력에 접근
-    outputs = examples['output']  # 치료사 응답에 접근
+    inputs = examples['input']  # 사용자 입력
+    outputs = examples['output']  # 치료사 응답
     
     # 토크나이저를 사용하여 입력과 출력 토큰화
     model_inputs = tokenizer(inputs, max_length=256, truncation=True, padding="max_length")
 
-    # 라벨: 치료사 응답만 토크나이즈하여 라벨로 사용
-    with tokenizer.as_target_tokenizer():
-        labels = tokenizer(outputs, max_length=256, truncation=True, padding="max_length").input_ids
+    # 라벨: 치료사 응답만 토크나이즈하여 라벨로 사용 (text_target을 통해)
+    labels = tokenizer(text_target=outputs, max_length=256, truncation=True, padding="max_length").input_ids
 
     # <pad> 토큰 제거 (손실 함수에서 무시하도록 처리)
     model_inputs["labels"] = [[(label if label != tokenizer.pad_token_id else -100) for label in labels] for labels in labels]
@@ -53,8 +52,9 @@ def preprocess_function(examples):
 train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
-# 데이터 콜레이터 정의 (응답 템플릿 제거)
-collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
+# 응답 템플릿 추가 (필수 인자)
+response_template = " ### Answer:"
+collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer, response_template=response_template)
 
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
