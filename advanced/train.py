@@ -30,13 +30,10 @@ with open('corpus.json', 'r', encoding='utf-8') as f:
 # 데이터셋 준비
 def preprocess_data(data):
     instructions, outputs = [], []
-    for entry in data:
-        if entry['role'] == 'user':
-            instruction = entry['content']
-        else:
-            output = entry['content']
-            instructions.append(instruction)
-            outputs.append(output)
+    for i in range(0, len(data), 2):  # user와 therapist가 번갈아 나오는 구조라 가정
+        if data[i]['role'] == 'user' and data[i+1]['role'] == 'therapist':
+            instructions.append(data[i]['content'])
+            outputs.append(data[i+1]['content'])
     return instructions, outputs
 
 instructions, outputs = preprocess_data(data)
@@ -46,6 +43,11 @@ dataset = Dataset.from_dict({
     "instruction": instructions,
     "output": outputs
 })
+
+# Train, Validation 데이터셋 나누기 (8:2 비율)
+train_test_split = dataset.train_test_split(test_size=0.2)
+train_dataset = train_test_split["train"]
+eval_dataset = train_test_split["test"]
 
 # 데이터 포맷팅 함수 정의
 def formatting_prompts_func(example):
@@ -58,8 +60,9 @@ collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenize
 # SFTTrainer 설정
 trainer = SFTTrainer(
     model=model,
-    train_dataset=dataset,
-    args=SFTConfig(output_dir="./output"),
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,  # 평가 데이터 추가
+    args=SFTConfig(output_dir="./output", num_train_epochs=3, per_device_train_batch_size=2),
     formatting_func=formatting_prompts_func,
     data_collator=collator,
 )
