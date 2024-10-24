@@ -23,7 +23,7 @@ model_name = "google/gemma-2b"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
 
-# 모델을 GPU로 이동 (가능한 경우)
+# 모델을 GPU로 이동
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
@@ -64,14 +64,15 @@ collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenize
 # Fine-tuning 설정
 config = SFTConfig(
     output_dir="./results",
-    num_train_epochs=5,  # 학습 epoch
-    per_device_train_batch_size=4,  # 배치 크기 증가
-    logging_steps=50,  # 로깅 간격
+    num_train_epochs=5,
+    per_device_train_batch_size=1,  # 배치 크기 줄이기
+    gradient_accumulation_steps=4,  # Gradient accumulation 사용
+    logging_steps=50,
     evaluation_strategy="steps",
-    eval_steps=50,  # 평가 간격
-    save_steps=100,  # 저장 간격
+    eval_steps=50,
+    save_steps=100,
     save_total_limit=2,
-    logging_dir="./logs",  # 로깅 디렉터리
+    logging_dir="./logs"
 )
 
 # SFTTrainer 설정
@@ -84,7 +85,7 @@ trainer = SFTTrainer(
     data_collator=collator,
 )
 
-# 학습 시작
+# 학습 실행
 trainer.train()
 
 # 모델 저장
@@ -93,7 +94,7 @@ trainer.save_model("./fine_tuned_model")
 # 테스트: 샘플 프롬프트로 모델 결과 확인
 test_prompt = "너무 무기력한데 어떻게 해야할지 모르겠어."
 inputs = tokenizer(test_prompt, return_tensors="pt").to(device)
-outputs = model.generate(**inputs, max_new_tokens=150)
+outputs = model.generate(**inputs, max_new_tokens=50, temperature=0.7)
 response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 print("모델 응답:", response)
