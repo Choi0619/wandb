@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from huggingface_hub import login
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from datasets import load_dataset, Dataset
+from datasets import Dataset
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
 from sklearn.model_selection import train_test_split
@@ -69,13 +69,11 @@ except Exception as e:
 
 # 8. 데이터 포맷팅 및 토크나이징 수정
 def formatting_prompts_func(example):
+    # 질문과 답변을 하나의 텍스트로 합침
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    # input_ids와 attention_mask를 반환하여 tokenizer가 올바르게 동작하도록 수정
+    # 텍스트를 토크나이저로 처리하여 input_ids 및 attention_mask 반환
     tokenized = tokenizer(text, padding="max_length", max_length=1024, truncation=True)
-    return {
-        "input_ids": tokenized["input_ids"],
-        "attention_mask": tokenized["attention_mask"]
-    }
+    return tokenized  # 토크나이즈된 텍스트 반환
 
 # 9. 데이터 콜레이터 정의
 response_template = " ### Answer:"
@@ -85,8 +83,8 @@ collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenize
 try:
     trainer = SFTTrainer(
         model=model,
-        train_dataset=train_dataset,
-        eval_dataset=valid_dataset,
+        train_dataset=train_dataset.map(formatting_prompts_func),
+        eval_dataset=valid_dataset.map(formatting_prompts_func),
         args=SFTConfig(
             output_dir="./results",
             evaluation_strategy="steps",
@@ -96,7 +94,6 @@ try:
             num_train_epochs=3,
             logging_steps=10,
         ),
-        formatting_func=formatting_prompts_func,
         data_collator=collator,
     )
     print("SFT Trainer 설정 성공. 학습을 시작합니다.")
