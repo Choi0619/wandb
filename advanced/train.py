@@ -4,7 +4,7 @@ import torch
 import wandb
 import logging
 from sklearn.model_selection import train_test_split
-from datasets import Dataset, load_metric
+from datasets import Dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -14,12 +14,12 @@ from transformers import (
 )
 
 # Wandb 프로젝트 초기화
-wandb.init(project='LLM_instruction_tuning')  # 프로젝트 이름 설정
-wandb.run.name = 'gpt2-instruction-tuning'  # Wandb 실행 이름 설정
+wandb.init(project='LLM_instruction_tuning')
+wandb.run.name = 'gpt2-instruction-tuning'
 
 # 로깅 설정
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",  # 수정
     datefmt="%m/%d/%Y %H:%M:%S",
     level=logging.INFO
 )
@@ -30,7 +30,7 @@ model_name = "gpt2"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
 
-# 데이터 로드
+# 데이터 로드 (corpus.json 파일에서 직접 로드)
 with open('corpus.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 
@@ -79,8 +79,7 @@ training_args = TrainingArguments(
     report_to="wandb",  # wandb로 로깅
     logging_dir="./logs",
     logging_first_step=True,
-    logging_dir="./logs",
-    fp16=True,  # GPU에서 mixed precision 사용 (속도 향상)
+    fp16=True,  # GPU에서 mixed precision 사용
 )
 
 # Trainer 설정
