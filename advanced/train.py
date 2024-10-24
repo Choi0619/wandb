@@ -8,9 +8,6 @@ from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
 from sklearn.model_selection import train_test_split
 
-# GPU 캐시 정리 및 메모리 확인
-torch.cuda.empty_cache()
-
 # .env 파일에서 환경 변수 로드
 load_dotenv()
 
@@ -20,11 +17,11 @@ hf_token = os.getenv("HF_TOKEN")
 # Hugging Face 로그인
 login(hf_token)
 
-# Gemma 2B 모델과 토크나이저 불러오기
-print("Gemma 2B 모델과 토크나이저를 로드하는 중입니다...")
-tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
-model = AutoModelForCausalLM.from_pretrained("google/gemma-2b", device_map="auto")
-print("Gemma 2B 모델과 토크나이저가 성공적으로 로드되었습니다.")
+# GPT-2 모델과 토크나이저 불러오기
+print("GPT-2 모델과 토크나이저를 로드하는 중입니다...")
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+model = AutoModelForCausalLM.from_pretrained("gpt2", device_map="auto")
+print("GPT-2 모델과 토크나이저가 성공적으로 로드되었습니다.")
 
 # GPU 캐시 정리
 torch.cuda.empty_cache()
@@ -69,7 +66,7 @@ print(f"Dataset 예시: {train_dataset[0]}")
 # Data formatting
 def formatting_prompts_func(example):
     text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
-    return {"input_ids": tokenizer(text, padding="max_length", max_length=1024, truncation=True)["input_ids"]}
+    return {"input_ids": tokenizer(text, padding="max_length", max_length=512, truncation=True)["input_ids"]}
 
 # 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
 response_template = " ### Answer:"
