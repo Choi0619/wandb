@@ -3,11 +3,9 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
-from transformers import AdamW, get_scheduler
-import torch
-from torch.utils.data import DataLoader
-from tqdm import tqdm
+from trl import SFTConfig, SFTTrainer
 import wandb
+from transformers import TrainerCallback
 
 # WandB 초기화
 wandb.init(project="therapist-chatbot", name="fine-tuning")
@@ -38,7 +36,7 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
 # 전처리 함수 정의
 def preprocess_function(examples):
     inputs = tokenizer(examples['input'], max_length=256, truncation=True, padding="max_length")
-    labels = tokenizer(examples['output'], max_length=256, truncation=True, padding="max_length").input_ids
+    labels = tokenizer(text_target=examples['output'], max_length=256, truncation=True, padding="max_length").input_ids
     
     # <pad> 토큰을 -100으로 설정하여 손실 계산에서 제외
     labels = [[(label if label != tokenizer.pad_token_id else -100) for label in label_list] for label_list in labels]
@@ -52,61 +50,61 @@ val_dataset = val_dataset.map(preprocess_function, batched=True)
 
 # DataCollatorWithPadding 사용
 collator = DataCollatorWithPadding(tokenizer=tokenizer)
-train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=8, collate_fn=collator)
-eval_dataloader = DataLoader(val_dataset, batch_size=8, collate_fn=collator)
 
-# 옵티마이저와 스케줄러 설정
-optimizer = AdamW(model.parameters(), lr=5e-5)
-num_epochs = 3
-num_training_steps = num_epochs * len(train_dataloader)
-lr_scheduler = get_scheduler(
-    name="linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps
+# SFT 설정 및 트레이너 정의
+sft_config = SFTConfig(
+    output_dir="./results",
+    eval_strategy="epoch",  # 매 epoch마다 평가
+    logging_strategy="steps",  # steps 단위로 로그 남기기
+    logging_steps=100,  # 100 스텝마다 로깅
+    eval_steps=500,  # 500 스텝마다 평가
+    per_device_train_batch_size=8,  # 배치 크기 설정
+    per_device_eval_batch_size=8,
+    num_train_epochs=3,  # 에폭 수 3으로 설정
+    save_total_limit=1,
+    fp16=False,  # FP16 비활성화
+    run_name="therapist-fine-tuning-run"  # WandB run name 설정
 )
 
-# 모델을 GPU로 이동
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
+trainer = SFTTrainer(
+    model=model,
+    train_dataset=train_dataset,
+    eval_dataset=val_dataset,
+    args=sft_config,
+    data_collator=collator,
+)
 
-# 학습 루프
-for epoch in range(num_epochs):
-    model.train()
-    train_loss = 0
-    for step, batch in enumerate(tqdm(train_dataloader)):
-        batch = {k: v.to(device) for k, v in batch.items()}
-        outputs = model(**batch)
-        loss = outputs.loss
-        loss.backward()
+# WandB와 통합된 TrainerCallback 정의
+class WandbCallback(TrainerCallback):
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs is not None:
+            wandb.log(logs)
 
-        optimizer.step()
-        lr_scheduler.step()
-        optimizer.zero_grad()
+# WandB 콜백 추가
+trainer.add_callback(WandbCallback)
 
-        # 매 스텝마다 train loss 로그
-        train_loss += loss.item()
-        wandb.log({"train/loss": loss.item(), "train/step": step + epoch * len(train_dataloader)})
+# 학습 시작
+train_result = trainer.train()
 
-    # 에폭 당 평균 train loss 계산
-    avg_train_loss = train_loss / len(train_dataloader)
+# 평가 데이터셋으로 평가 실행
+eval_metrics = trainer.evaluate()
 
-    # 평가 루프
-    model.eval()
-    eval_loss = 0
-    with torch.no_grad():
-        for batch in eval_dataloader:
-            batch = {k: v.to(device) for k, v in batch.items()}
-            outputs = model(**batch)
-            eval_loss += outputs.loss.item()
-
-    avg_eval_loss = eval_loss / len(eval_dataloader)
-
-    # WandB에 eval loss 및 train loss 기록
-    wandb.log({"eval/loss": avg_eval_loss, "train/epoch": epoch, "eval/epoch": epoch})
-
-    print(f"Epoch {epoch + 1}: Train Loss = {avg_train_loss}, Eval Loss = {avg_eval_loss}")
+# WandB에 eval 결과 로깅
+wandb.log({"eval/loss": eval_metrics.get('eval_loss', 0), "eval/epoch": eval_metrics.get('epoch', 0)})
 
 # 모델 저장
-model.save_pretrained("./fine_tuned_therapist_chatbot")
-tokenizer.save_pretrained("./fine_tuned_therapist_chatbot")
+trainer.save_model("./fine_tuned_therapist_chatbot")
+
+# 학습 중 로그 히스토리 확인
+df = pd.DataFrame(trainer.state.log_history)
+print(df)  # 로그 기록 출력 (손실 값이 기록되었는지 확인)
+
+# 학습 및 평가 결과 로깅
+trainer.log_metrics("train", train_result.metrics)
+trainer.save_metrics("train", train_result.metrics)
+
+trainer.log_metrics("eval", eval_metrics)
+trainer.save_metrics("eval", eval_metrics)
 
 # WandB 로깅 종료
 wandb.finish()
