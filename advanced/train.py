@@ -22,6 +22,7 @@ model_name = "google/gemma-2b"
 # 토크나이저와 모델 불러오기
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
+model.gradient_checkpointing_enable()  # Gradient checkpointing 사용으로 메모리 최적화
 
 # 모델을 GPU로 이동
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -55,7 +56,7 @@ eval_dataset = train_test_split["test"]
 
 # 데이터 포맷팅 함수 정의
 def formatting_prompts_func(example):
-    return [f"### Question: {example['instruction']}\n ### Answer: {example['output']}"]
+    return f"### Question: {example['instruction']}\n ### Answer: {example['output']}"
 
 # Data Collator 정의
 response_template = " ### Answer:"
@@ -71,8 +72,7 @@ config = SFTConfig(
     evaluation_strategy="steps",
     eval_steps=50,
     save_steps=100,
-    save_total_limit=2,
-    logging_dir="./logs"
+    fp16=True  # 혼합 정밀도 사용으로 메모리 최적화
 )
 
 # SFTTrainer 설정
