@@ -80,6 +80,12 @@ class WandbCallback(TrainerCallback):
         if logs is not None:
             wandb.log(logs)
 
+    def on_step_end(self, args, state, control, **kwargs):
+        # 매 스텝마다 손실 값을 WandB에 기록
+        logs = {"train/loss": state.log_history[-1].get("loss", None), "train/global_step": state.global_step}
+        if logs["train/loss"] is not None:
+            wandb.log(logs)
+
 # WandB 콜백 추가
 trainer.add_callback(WandbCallback)
 
