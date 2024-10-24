@@ -6,6 +6,10 @@ from datasets import Dataset
 from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
 from sklearn.model_selection import train_test_split
+import wandb
+
+# wandb 초기화
+wandb.init(project="LLM_instruction_tuning", entity="your_wandb_username")  # 프로젝트 이름과 wandb 계정 이름 수정
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
@@ -84,6 +88,9 @@ trainer = SFTTrainer(
         logging_steps=10,
         gradient_accumulation_steps=4,  # Gradient Accumulation 적용
         fp16=True,  # Mixed Precision 사용
+        report_to="wandb",  # wandb로 결과 보고
+        save_strategy="steps",  # 모델 저장 주기 설정
+        save_steps=100,  # 모델 저장할 step 수
     ),
     data_collator=collator,
 )
@@ -95,5 +102,17 @@ trainer.train()
 # 모델 저장
 trainer.save_model("./trained_model")
 
-# GPU 캐시 정리
+# 학습 종료 후 GPU 캐시 정리
 torch.cuda.empty_cache()
+
+# 샘플 데이터로 모델 테스트
+def generate_answer(instruction):
+    inputs = tokenizer(f"### Question: {instruction}\n ### Answer:", return_tensors="pt").input_ids
+    outputs = model.generate(inputs, max_length=100, pad_token_id=tokenizer.pad_token_id)
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+# 예시 질문
+sample_question = "요즘 아무 이유 없이 눈물이 나요. 이런 기분을 어떻게 해결할 수 있을까요?"
+generated_response = generate_answer(sample_question)
+print(f"샘플 질문: {sample_question}")
+print(f"모델의 답변: {generated_response}")
