@@ -2,7 +2,7 @@ import os
 import json
 import wandb
 import torch
-from datasets import load_dataset, Dataset
+from datasets import Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from sklearn.model_selection import train_test_split
@@ -22,19 +22,24 @@ with open('corpus.json', 'r', encoding='utf-8') as f:
 
 # Instruction tuning에 맞게 데이터셋을 구성
 data = []
-for i in range(0, len(corpus), 2):
-    if i + 1 < len(corpus):
-        prompt = f"### User: {corpus[i]['content']}\n### Therapist: {corpus[i+1]['content']}"
-        data.append({"prompt": prompt})
+for i in range(len(corpus) - 1):
+    if corpus[i]['role'] == 'user' and corpus[i + 1]['role'] == 'therapist':
+        prompt = f"### User: {corpus[i]['content']}\n"
+        answer = f"### Therapist: {corpus[i + 1]['content']}"
+        data.append({"prompt": prompt, "response": answer})
 
 # 데이터셋을 Hugging Face Datasets 포맷으로 변환
-dataset = Dataset.from_dict({"text": [d["prompt"] for d in data]})
+dataset = Dataset.from_dict({"prompt": [d["prompt"] for d in data], "response": [d["response"] for d in data]})
 
 # Train/Validation split (8:2 비율로 나누기)
 train_dataset, val_dataset = train_test_split(dataset, test_size=0.2, shuffle=True)
 
 # 데이터 Collator (Completion 전용)
 collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
+
+# 텍스트 포맷 함수 정의 (프롬프트와 응답을 합침)
+def formatting_prompts_func(example):
+    return example['prompt'] + example['response']
 
 # Trainer 설정
 training_args = TrainingArguments(
@@ -58,7 +63,7 @@ trainer = SFTTrainer(
     eval_dataset=val_dataset,
     tokenizer=tokenizer,
     data_collator=collator,
-    formatting_func=lambda x: x["text"],  # 데이터셋에서 텍스트를 가져오는 함수
+    formatting_func=formatting_prompts_func,  # 프롬프트와 응답을 함께 처리하는 함수
 )
 
 # 학습 수행
