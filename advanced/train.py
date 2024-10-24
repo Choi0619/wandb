@@ -1,102 +1,89 @@
 import os
-import json
-import wandb
 import torch
-from datasets import Dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, TrainerCallback
-from trl import SFTTrainer
+import wandb
+import logging
+from sklearn.model_selection import train_test_split
+from transformers import (
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    Trainer,
+    TrainingArguments,
+    DataCollatorForLanguageModeling,
+)
+from datasets import load_dataset
 
 # Wandb 초기화
-wandb.init(project='maum_shelter')
-wandb.run.name = 'gpt-instruction-tuning'
+wandb.init(project="maum_shelter")
 
-# 모델과 토크나이저 로드
+# 로깅 설정
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 데이터셋 로드
+dataset = load_dataset("json", data_files="corpus.json")
+train_data, val_data = train_test_split(dataset['train'], test_size=0.2)
+
+# 토크나이저 및 모델 로드
 model_name = "facebook/opt-350m"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name)
 
-# corpus.json 불러오기
-with open('corpus.json', 'r', encoding='utf-8') as f:
-    corpus = json.load(f)
+# 데이터 전처리
+def preprocess_function(examples):
+    inputs = [f"### User: {item['content']}\n" for item in examples if item["role"] == "user"]
+    responses = [f"### Therapist: {item['content']}\n" for item in examples if item["role"] == "therapist"]
+    model_inputs = tokenizer(inputs, padding="max_length", truncation=True)
+    model_inputs["labels"] = tokenizer(responses, padding="max_length", truncation=True)["input_ids"]
+    return model_inputs
 
-# 사용자 입력과 상담사의 응답을 추출하여 학습 데이터 준비
-data = []
-for i in range(len(corpus) - 1):
-    if corpus[i]['role'] == 'user' and corpus[i + 1]['role'] == 'therapist':
-        prompt = corpus[i]['content']
-        response = corpus[i + 1]['content']
-        data.append({"prompt": prompt, "response": response})
+train_data = train_data.map(preprocess_function, batched=True)
+val_data = val_data.map(preprocess_function, batched=True)
 
-# 데이터셋을 Hugging Face Datasets 포맷으로 변환
-dataset = Dataset.from_dict({"prompt": [d["prompt"] for d in data], "response": [d["response"] for d in data]})
+# 학습 설정
+training_args = TrainingArguments(
+    output_dir="./results",
+    per_device_train_batch_size=8,
+    per_device_eval_batch_size=8,
+    num_train_epochs=5,
+    logging_steps=10,  # 로그를 10 스텝마다 찍음
+    evaluation_strategy="steps",  # 스텝마다 평가
+    eval_steps=50,  # 평가를 매 50 스텝마다 수행
+    save_steps=100,
+    load_best_model_at_end=True,
+    logging_dir='./logs',
+)
 
-# Train/Validation split (Hugging Face Datasets 메서드 사용)
-dataset = dataset.train_test_split(test_size=0.2)
-train_dataset = dataset['train']
-val_dataset = dataset['test']
-
-# 토크나이저로 데이터 전처리
-def tokenize(batch):
-    return tokenizer(batch["prompt"], padding="max_length", truncation=True, max_length=512)
-
-train_dataset = train_dataset.map(tokenize, batched=True)
-val_dataset = val_dataset.map(tokenize, batched=True)
-
-# 라벨 생성
-def create_labels(batch):
-    labels = tokenizer(batch["response"], padding="max_length", truncation=True, max_length=512)["input_ids"]
-    batch["labels"] = labels
-    return batch
-
-train_dataset = train_dataset.map(create_labels, batched=True)
-val_dataset = val_dataset.map(create_labels, batched=True)
-
-# 필요한 컬럼만 남기기
-train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
-val_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
-
-# 데이터 Collator 설정 (기본적인 DataCollatorForLanguageModeling 사용)
-collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-
-# TrainerCallback을 사용하여 매 스텝마다 train_loss와 eval_loss를 기록
-class LogCallback(TrainerCallback):
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        if logs is not None:
-            wandb.log(logs)
+# Data collator 설정
+data_collator = DataCollatorForLanguageModeling(
+    tokenizer=tokenizer,
+    mlm=False,
+)
 
 # Trainer 설정
-training_args = TrainingArguments(
-    output_dir="./output",
-    overwrite_output_dir=True,
-    per_device_train_batch_size=4,
-    per_device_eval_batch_size=4,
-    evaluation_strategy="steps",
-    eval_steps=500,   # 매 500스텝마다 eval 수행
-    logging_steps=100,  # 매 100스텝마다 로그 기록
-    save_steps=1000,
-    save_total_limit=2,
-    num_train_epochs=3,
-    report_to="wandb"  # wandb에 보고
-)
-
-# Trainer 정의
-trainer = SFTTrainer(
+trainer = Trainer(
     model=model,
     args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=val_dataset,
+    train_dataset=train_data,
+    eval_dataset=val_data,
     tokenizer=tokenizer,
-    data_collator=collator,
-    callbacks=[LogCallback()]  # 로그 콜백 추가
+    data_collator=data_collator,
 )
 
-# 학습 수행
-trainer.train()
+# 학습 및 평가
+for epoch in range(int(training_args.num_train_epochs)):
+    logger.info(f"Epoch {epoch+1} 시작")
+    
+    # 학습
+    train_result = trainer.train()
+    train_metrics = train_result.metrics
+    wandb.log({"train_loss": train_metrics['train_loss'], "epoch": epoch})
+    
+    # 평가
+    eval_metrics = trainer.evaluate()
+    wandb.log({"eval_loss": eval_metrics['eval_loss'], "epoch": epoch})
+    
+    # 모델 저장
+    trainer.save_model()
+    
+wandb.finish()
 
-# 모델 및 결과 저장
-trainer.save_model()
-
-# 평가 결과 로깅
-metrics = trainer.evaluate()
-trainer.log_metrics("eval", metrics)
-trainer.save_metrics("eval", metrics)
