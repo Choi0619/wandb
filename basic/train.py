@@ -1,149 +1,98 @@
 import os
-import sys
-import math
 import torch
-import wandb
-import logging
-import datasets
-import argparse
-import evaluate
-import transformers
+from dotenv import load_dotenv
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from datasets import Dataset
+from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
+import json
+from sklearn.model_selection import train_test_split
+from transformers import Trainer, TrainingArguments
 
-from typing import Optional
-from itertools import chain
-from dataclasses import dataclass, field
+# .env 파일에서 환경 변수 로드
+load_dotenv()
 
-from datasets import load_dataset
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    HfArgumentParser,
-    Trainer,
-    TrainingArguments,
-    default_data_collator
+# 모델과 토크나이저 불러오기 (HF_TOKEN 생략)
+print("모델과 토크나이저를 로드하는 중입니다...")
+tokenizer = AutoTokenizer.from_pretrained("distilgpt2")  # 가벼운 모델 사용
+model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+print("모델과 토크나이저가 성공적으로 로드되었습니다.")
+
+# GPU 캐시 정리
+torch.cuda.empty_cache()
+
+# Gradient checkpointing을 활성화하여 메모리 절약
+model.gradient_checkpointing_enable()
+
+# 데이터 로드
+with open("corpus.json", "r", encoding="utf-8") as f:
+    corpus = json.load(f)
+
+print("JSON 파일이 성공적으로 로드되었습니다.")
+print(f"데이터 예시: {corpus[0]}")
+
+# 데이터를 질문과 답변의 쌍으로 형식화
+formatted_data = []
+for i in range(0, len(corpus), 2):
+    formatted_data.append({
+        "instruction": corpus[i]["content"],  # 질문
+        "response": corpus[i+1]["content"]    # 답변
+    })
+
+print(f"변환된 데이터 예시: {formatted_data[0]}")
+
+# 데이터를 8:2로 나누어 train/validation dataset 만들기
+train_data, valid_data = train_test_split(formatted_data, test_size=0.2)
+
+print(f"Train 데이터 수: {len(train_data)}, Validation 데이터 수: {len(valid_data)}")
+
+# train과 validation 데이터를 Dataset 객체로 변환
+train_dataset = Dataset.from_dict({
+    "instruction": [d["instruction"] for d in train_data],
+    "response": [d["response"] for d in train_data]
+})
+valid_dataset = Dataset.from_dict({
+    "instruction": [d["instruction"] for d in valid_data],
+    "response": [d["response"] for d in valid_data]
+})
+
+print("Dataset 객체로 변환 성공.")
+print(f"Dataset 예시: {train_dataset[0]}")
+
+# Data formatting
+def formatting_prompts_func(example):
+    text = f"### Question: {example['instruction']}\n ### Answer: {example['response']}"
+    return {"input_ids": tokenizer(text, padding="max_length", max_length=512, truncation=True)["input_ids"]}
+
+# 데이터 콜레이터 정의 (답변 부분에만 Loss가 적용되도록)
+response_template = " ### Answer:"
+collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+
+# 학습 설정
+training_args = TrainingArguments(
+    output_dir="./results",
+    evaluation_strategy="steps",
+    eval_steps=100,
+    per_device_train_batch_size=4,  # 배치 크기 늘림
+    per_device_eval_batch_size=4,   # 평가 배치 크기도 늘림
+    num_train_epochs=3,
+    logging_steps=10,
+    gradient_accumulation_steps=2,  # Gradient Accumulation
+    fp16=True,  # Mixed Precision
+    save_steps=500,
+    save_total_limit=2,
 )
-from transformers.trainer_utils import get_last_checkpoint
 
-# Wandb 프로젝트 초기화
-wandb.init(project='gyuhwan')  # 프로젝트 이름을 'gyuhwan'으로 설정
-wandb.run.name = 'gpt-finetuning'  # Wandb 실행 이름 설정
-
-@dataclass
-class Arguments:
-    model_name_or_path: Optional[str] = field(default=None)  # 파인튜닝할 HuggingFace 모델 이름
-    torch_dtype: Optional[str] = field(default=None, metadata={'choices': ['auto', 'bfloat16', 'float16', 'float32']})  # 모델의 precision(정밀도)
-    dataset_name: Optional[str] = field(default=None)  # HuggingFace 허브에서 사용할 데이터셋 이름
-    dataset_config_name: Optional[str] = field(default=None)  # 데이터셋의 설정 이름
-    block_size: int = field(default=1024)  # 파인튜닝할 때 사용할 입력 텍스트의 길이
-    num_workers: Optional[int] = field(default=None)  # 데이터 로드 시 사용할 worker 수
-
-parser = HfArgumentParser((Arguments, TrainingArguments))
-args, training_args = parser.parse_args_into_dataclasses()
-
-# 로깅 설정
-logger = logging.getLogger()
-logging.basicConfig(
-    format="%(asctime)s - %(levellevelname)s - %(name)s - %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
-
-if training_args.should_log:
-    transformers.utils.logging.set_verbosity_info()
-
-log_level = training_args.get_process_log_level()
-logger.setLevel(log_level)
-datasets.utils.logging.set_verbosity(log_level)
-transformers.utils.logging.set_verbosity(log_level)
-
-logger.info(f"Training/evaluation parameters {training_args}")
-
-# 데이터셋 로드
-raw_datasets = load_dataset(
-    args.dataset_name,
-    args.dataset_config_name
-)
-
-# 모델과 토크나이저 로드
-config = AutoConfig.from_pretrained(args.model_name_or_path)
-tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
-model = AutoModelForCausalLM.from_pretrained(
-    args.model_name_or_path,
-    config=config,
-    torch_dtype=args.torch_dtype
-)
-
-# 토크나이저 및 모델 조정
-tokenizer.pad_token_id = tokenizer.eos_token_id
-embedding_size = model.get_input_embeddings().weight.shape[0]
-if len(tokenizer) > embedding_size:
-    model.resize_token_embeddings(len(tokenizer))
-
-column_names = list(raw_datasets["train"].features)
-text_column_name = "text" if "text" in column_names else column_names[0]
-
-# 토크나이즈 함수 정의
-def tokenize_function(examples):
-    output = tokenizer(examples[text_column_name])
-    return output
-
-# 데이터셋 토크나이즈
-with training_args.main_process_first(desc="dataset map tokenization"):
-    tokenized_datasets = raw_datasets.map(
-        tokenize_function,
-        batched=True,
-        num_proc=args.num_workers,
-        remove_columns=column_names
-    )
-
-# 입력 길이에 맞게 블록 크기 조정
-block_size = args.block_size if tokenizer.model_max_length is None else min(args.block_size, tokenizer.model_max_length)
-
-# 텍스트 그룹화 함수 정의
-def group_texts(examples):
-    concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
-    total_length = len(concatenated_examples[list(examples.keys())[0]])
-    total_length = (total_length // block_size) * block_size
-    result = {
-        k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
-        for k, t in concatenated_examples.items()
-    }
-    result["labels"] = result["input_ids"].copy()
-    return result
-
-# 텍스트를 그룹화하여 토크나이즈된 데이터셋 생성
-with training_args.main_process_first(desc="grouping texts together"):
-    lm_datasets = tokenized_datasets.map(
-        group_texts,
-        batched=True,
-        num_proc=args.num_workers
-    )
-
-# 학습 및 평가용 데이터셋 분리
-train_dataset = lm_datasets["train"]
-eval_dataset = lm_datasets["validation"]  # 평가(validation) 데이터셋 추가
-
-# Trainer 정의
+# Trainer 설정
 trainer = Trainer(
     model=model,
     args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=eval_dataset,  # 평가 데이터셋 추가
-    tokenizer=tokenizer,
-    data_collator=default_data_collator
+    train_dataset=train_dataset.map(formatting_prompts_func),
+    eval_dataset=valid_dataset.map(formatting_prompts_func),
+    data_collator=collator,
 )
 
-# 체크포인트 설정
-checkpoint = None
-last_checkpoint = get_last_checkpoint(training_args.output_dir)
-if training_args.resume_from_checkpoint is not None:
-    checkpoint = training_args.resume_from_checkpoint
-else:
-    checkpoint = last_checkpoint
-
 # 학습 및 평가 수행
-train_result = trainer.train(resume_from_checkpoint=checkpoint)
+train_result = trainer.train()
 trainer.save_model()
 
 # 학습 및 평가 결과 로깅
@@ -157,3 +106,13 @@ trainer.log_metrics("eval", eval_metrics)
 trainer.save_metrics("eval", eval_metrics)
 
 trainer.save_state()
+
+# 샘플 테스트 출력
+sample_input = "어떻게 하면 더 집중을 잘할 수 있을까요?"
+inputs = tokenizer(f"### Question: {sample_input}\n ### Answer:", return_tensors="pt")
+output = model.generate(**inputs)
+print(f"샘플 입력: {sample_input}")
+print(f"모델 출력: {tokenizer.decode(output[0], skip_special_tokens=True)}")
+
+# GPU 캐시 정리
+torch.cuda.empty_cache()
