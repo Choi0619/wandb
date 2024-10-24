@@ -55,7 +55,7 @@ sft_config = SFTConfig(
     output_dir="./results",
     evaluation_strategy="epoch",  # 매 epoch마다 평가
     logging_strategy="steps",  # steps 단위로 로그 남기기
-    logging_steps=50,  # 더 자주 로깅하기 위해 50 스텝마다 로깅
+    logging_steps=100,  # 100 스텝마다 로깅
     eval_steps=500,  # 500 스텝마다 평가
     per_device_train_batch_size=8,  # 배치 크기 설정
     per_device_eval_batch_size=8,
@@ -75,12 +75,13 @@ trainer = SFTTrainer(
 # 학습 시작
 train_result = trainer.train()
 
+# 매 epoch마다 학습 손실 값을 로그로 기록
+for epoch in range(int(sft_config.num_train_epochs)):
+    train_metrics = trainer.evaluate(train_dataset)  # 학습 데이터셋에 대해 평가를 실행하여 손실 값을 얻음
+    wandb.log({"train/loss": train_metrics['eval_loss'], "epoch": epoch + 1})  # eval_loss로 train_loss 대체 가능
+
 # 모델 저장
 trainer.save_model("./fine_tuned_therapist_chatbot")
-
-# WandB에 train 결과 로깅
-train_metrics = train_result.metrics
-wandb.log({"train/loss": train_metrics.get('loss', 0), "train/epoch": train_metrics['epoch']})
 
 # 평가 데이터셋으로 평가 실행
 eval_metrics = trainer.evaluate()
