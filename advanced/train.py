@@ -2,7 +2,7 @@ import json
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
+from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding, TrainerCallback
 from trl import SFTConfig, SFTTrainer
 import wandb
 
@@ -50,13 +50,18 @@ val_dataset = val_dataset.map(preprocess_function, batched=True)
 # DataCollatorWithPadding 사용
 collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
+# 콜백 클래스 정의 (손실을 WandB에 기록하는 역할)
+class LogTrainLossCallback(TrainerCallback):
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if 'loss' in logs:
+            wandb.log({"train/loss": logs['loss'], "step": state.global_step})
+
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
     output_dir="./results",
-    eval_strategy="epoch",  # 매 epoch마다 평가
+    evaluation_strategy="no",  # 학습이 완료된 후에 평가하도록 설정
     logging_strategy="steps",  # steps 단위로 로그 남기기
     logging_steps=100,  # 100 스텝마다 로깅
-    eval_steps=500,  # 500 스텝마다 평가
     per_device_train_batch_size=8,  # 배치 크기 설정
     per_device_eval_batch_size=8,
     num_train_epochs=3,  # 에폭 수 3으로 설정
@@ -71,6 +76,7 @@ trainer = SFTTrainer(
     eval_dataset=val_dataset,
     args=sft_config,
     data_collator=collator,
+    callbacks=[LogTrainLossCallback()]  # 콜백 추가
 )
 
 # 학습 시작
@@ -79,7 +85,7 @@ train_result = trainer.train()
 # WandB에 train 결과 먼저 로깅
 wandb.log({"train/loss": train_result.metrics.get('train_loss', 0), "train/epoch": train_result.metrics['epoch']})
 
-# 평가 데이터셋으로 평가 실행
+# 평가 데이터셋으로 평가 실행 (학습 완료 후)
 eval_metrics = trainer.evaluate()
 
 # WandB에 eval 결과 로깅
