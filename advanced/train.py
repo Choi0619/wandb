@@ -53,14 +53,13 @@ def preprocess_function(examples):
 train_dataset = train_dataset.map(preprocess_function, batched=True)
 val_dataset = val_dataset.map(preprocess_function, batched=True)
 
-# 데이터 콜레이터 정의 (응답 템플릿 추가)
-response_template = " ### Answer:"
-collator = DataCollatorForCompletionOnlyLM(response_template=response_template, tokenizer=tokenizer)
+# 데이터 콜레이터 정의 (응답 템플릿 제거)
+collator = DataCollatorForCompletionOnlyLM(tokenizer=tokenizer)
 
 # SFT 설정 및 트레이너 정의
 sft_config = SFTConfig(
     output_dir="./results",
-    evaluation_strategy="epoch",
+    evaluation_strategy="epoch",  # 매 epoch마다 평가
     logging_strategy="steps",  # steps 단위로 로그 남기기
     logging_steps=100,  # 100 스텝마다 로깅
     eval_steps=500,  # 500 스텝마다 평가
@@ -80,10 +79,27 @@ trainer = SFTTrainer(
 )
 
 # 학습 시작
-trainer.train()
+train_result = trainer.train()
 
 # 모델 저장
 trainer.save_model("./fine_tuned_therapist_chatbot")
+
+# WandB에 train 결과 로깅
+train_metrics = train_result.metrics
+wandb.log({"train/loss": train_metrics['loss'], "train/epoch": train_metrics['epoch']})
+
+# 평가 데이터셋으로 평가 실행
+eval_metrics = trainer.evaluate()
+
+# WandB에 eval 결과 로깅
+wandb.log({"eval/loss": eval_metrics['eval_loss'], "eval/epoch": eval_metrics['epoch']})
+
+# 학습 및 평가 결과 로깅
+trainer.log_metrics("train", train_metrics)
+trainer.save_metrics("train", train_metrics)
+
+trainer.log_metrics("eval", eval_metrics)
+trainer.save_metrics("eval", eval_metrics)
 
 # WandB 로깅 종료
 wandb.finish()
