@@ -54,9 +54,9 @@ train_test_split = dataset.train_test_split(test_size=0.2)
 train_dataset = train_test_split["train"]
 eval_dataset = train_test_split["test"]
 
-# 데이터 포맷팅 함수 정의
+# 데이터 포맷팅 함수 정의 (리스트 반환)
 def formatting_prompts_func(example):
-    return f"### Question: {example['instruction']}\n ### Answer: {example['output']}"
+    return [f"### Question: {example['instruction']}\n ### Answer: {example['output']}"]
 
 # Data Collator 정의
 response_template = " ### Answer:"
@@ -66,14 +66,16 @@ collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenize
 config = SFTConfig(
     output_dir="./results",
     num_train_epochs=5,
-    per_device_train_batch_size=1,  # 배치 크기 줄이기
-    gradient_accumulation_steps=4,  # Gradient accumulation 사용
+    per_device_train_batch_size=1,
+    max_seq_length=512,  # max_seq_length 설정
+    gradient_accumulation_steps=4,
     logging_steps=50,
     evaluation_strategy="steps",
     eval_steps=50,
     save_steps=100,
-    fp16=True  # 혼합 정밀도 사용으로 메모리 최적화
+    fp16=True
 )
+
 
 # SFTTrainer 설정
 trainer = SFTTrainer(
