@@ -5,7 +5,6 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingA
 import torch
 import json
 from datasets import Dataset
-import evaluate  # Use evaluate instead of load_metric
 
 # .env 파일에서 환경 변수 불러오기
 load_dotenv()
@@ -22,6 +21,11 @@ model_name = "EleutherAI/gpt-neo-1.3B"
 # 토크나이저와 모델 불러오기
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
+
+# Add padding token if it doesn't exist
+if tokenizer.pad_token is None:
+    tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
+model.resize_token_embeddings(len(tokenizer))  # Resize embeddings to account for the new token
 
 # 모델을 GPU로 이동 (가능한 경우)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
